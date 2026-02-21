@@ -1,105 +1,104 @@
-# 🏔️ SkiGem Orchestra
+# 🏔️ SnowGem Orchestra
 
-An AI-powered multi-agent system designed to scour the deep, uncommercialized corners of the internet to find hidden wintersport gems. It filters ski resorts based on strict criteria and hunts down affordable, perfectly located chalets—explicitly avoiding mega-aggregators like Booking.com or Airbnb.
+SnowGem Orchestra is a multi-agent AI system designed to bypass mainstream aggregators (like Booking.com) and scour the "holes of the internet" to find the perfect, hidden-gem ski resorts and chalets. 
 
-## 🎻 The Orchestra (Agent Roles)
+Built with a TypeScript/Next.js frontend and a Python multi-agent backend, this system uses an "orchestra" of specialized AI agents to plan the ultimate winter sports holiday based on highly specific user criteria.
 
-This system uses a multi-agent framework where each AI agent has a highly specialized role:
+## ✨ Features
 
-1. **The Resort Scout (`resort_scout_agent.py`):** Takes your criteria (e.g., >50km of slopes, Austria or France, high altitude) and searches databases/web to curate a list of 3-5 hidden gem ski areas.
-2. **The Deep Web Hunter (`chalet_hunter_agent.py`):** Takes the resorts found by the Scout and searches for chalets. **Crucially, it uses search operators to exclude major sites** (e.g., `-site:booking.com -site:airbnb.com`) and translates queries into local languages (e.g., *"Ferienwohnung direkt an der Piste"*, *"Gîte au pied des pistes"*) to find local tourist boards and independent owner websites.
-3. **The Scraper (`scraper_tool.py`):** A custom tool built with Playwright/BeautifulSoup that bypasses basic bot protections to read the text on these obscure local websites and extract pricing, distance to the ski lift, and contact info.
-4. **The Deal Evaluator (`evaluator_agent.py`):** Cross-references the scraped data against your strict requirements (price, proximity to lift) and outputs a final, ranked report with direct links.
+* **Criteria-Based Resort Scouting:** Filters European (or global) ski areas based on slope length, altitude, and country.
+* **Deep-Web Chalet Hunting:** Bypasses hotel aggregators to find standalone chalets on local tourism boards, independent property sites, and niche forums.
+* **Intelligent Evaluation:** Scores found chalets against strict user requirements (e.g., price limits, walking distance to ski lifts).
+* **Modern UI:** A clean, responsive frontend built with Next.js, React, and Tailwind CSS.
 
-## 📂 Project Structure
+## 🏗️ Architecture (The Orchestra)
 
-```text
-skigem-orchestra/
-│
-├── .env                        # API keys (OpenAI/Gemini, Serper API, etc.)
-├── requirements.txt            # Python dependencies (crewai, playwright, bs4, etc.)
-├── main.py                     # The main entry point that orchestrates the crew
-│
-├── config/
-│   ├── settings.yaml           # Global configurations and search operators
-│   └── criteria.json           # Your specific inputs (slope km, budget, distance to lift)
-│
-├── src/
-│   ├── __init__.py
-│   │
-│   ├── agents/                 # The AI Agents (The Musicians)
-│   │   ├── __init__.py
-│   │   ├── resort_scout.py     # Agent: Finds the ski areas
-│   │   ├── chalet_hunter.py    # Agent: Finds the URLs of hidden chalets
-│   │   └── evaluator.py        # Agent: Ranks and formats the final output
-│   │
-│   ├── tasks/                  # The specific instructions for each agent (The Sheet Music)
-│   │   ├── __init__.py
-│   │   ├── scout_tasks.py
-│   │   ├── hunt_tasks.py
-│   │   └── evaluate_tasks.py
-│   │
-│   └── tools/                  # The tools the agents use to interact with the world (The Instruments)
-│       ├── __init__.py
-│       ├── search_engine.py    # Uses SerpAPI/DuckDuckGo with negative parameters (-booking.com)
-│       └── deep_scraper.py     # Playwright script to scrape JS-heavy local chalet sites
-│
-└── output/
-    └── hidden_gems_report.md   # The final generated itinerary and links
+The backend is powered by **CrewAI / LangGraph**, orchestrating three distinct agents:
 
-```
+1. **The Resort Scout ⛷️:** Uses search APIs and ski-resort databases to find regions that match the overarching criteria (e.g., "At least 150km of slopes in Austria").
+2. **The Chalet Hunter 🏡:** Takes the resort list and uses web-scraping tools (Playwright/BeautifulSoup) to crawl local websites, Google Maps data, and independent booking sites for chalets.
+3. **The Evaluator ⚖️:** Parses the scraped data (price, distance to lift, amenities) and filters out anything that doesn't perfectly match the user's requirements.
+
+## 🛠️ Tech Stack
+
+* **Frontend:** Next.js, TypeScript, Tailwind CSS, React Query
+* **Backend:** Python, FastAPI (for the API layer)
+* **AI Orchestration:** CrewAI or LangGraph
+* **LLM:** OpenAI GPT-4o / Anthropic Claude 3.5 Sonnet (for reasoning and parsing unstructured web data)
+* **Tools:** Playwright (Web Scraping), Tavily/Serper (Web Search)
 
 ## 🚀 Getting Started
 
-### 1. Prerequisites
+### Prerequisites
+* Node.js (v18+)
+* Python (3.11+)
+* OpenAI/Anthropic API Key
+* Tavily/Serper API Key
 
-* Python 3.10+
-* An LLM API key (e.g., Google Gemini 2.0 or OpenAI GPT-4o).
-* A Search API key (e.g., Serper.dev or Tavily) to allow the agents to Google things.
+### Installation
 
-### 2. Installation
+1. **Clone the repo**
+   ```bash
+   git clone [https://github.com/yourusername/snowgem-orchestra.git](https://github.com/yourusername/snowgem-orchestra.git)
+   cd snowgem-orchestra
 
-Clone the repository and install the dependencies:
+2. **Setup Backend**
 
-```bash
-git clone https://github.com/yourusername/skigem-orchestra.git
-cd skigem-orchestra
+```
+cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
-playwright install  # Installs the browser binaries for the deep web scraper
+cp .env.example .env # Add your API keys here
+uvicorn app.main:app --reload
+
+3 **Setup Frontend**
 
 ```
+cd ../frontend
+npm install
+npm run dev
 
-### 3. Configuration
 
-1. Rename `.env.example` to `.env` and add your API keys.
-2. Open `config/criteria.json` and set your dream holiday parameters:
+***
 
-```json
-{
-  "min_slope_km": 60,
-  "countries": ["Austria", "Italy"],
-  "max_price_per_night_eur": 120,
-  "max_distance_to_lift_meters": 500,
-  "vibe": "authentic, quiet, no massive hotels"
-}
+### 📂 The File Tree
 
-```
+Here is the structure to keep your frontend and your AI orchestra cleanly separated:
 
-### 4. Run the Orchestra
-
-```bash
-python main.py
-
-```
-
-Grab a coffee. The agents will talk to each other, search the web, scrape obscure local sites, and generate your `hidden_gems_report.md` in the `output/` folder.
-
-## 🕵️‍♂️ The "Holes of the Internet" Strategy
-
-To ensure the AI doesn't just hand you an Expedia link, the `search_engine.py` tool is hardcoded to append specific search operators to every query the AI makes:
-
-* **Exclusions:** `-site:booking.com -site:airbnb.com -site:expedia.com -site:tripadvisor.com -site:tui.com`
-* **Inclusions:** `intext:"skipass" AND intext:"chalet" OR intext:"apartment"`
-* **Local Domains:** Restricting searches to `.at` (Austria), `.ch` (Switzerland), or `.fr` (France) to prioritize local tourism board aggregators (like *[townname].at*).
+```text
+snowgem-orchestra/
+├── frontend/                     # TypeScript Next.js App
+│   ├── src/
+│   │   ├── app/                  # Next.js App Router (Pages & Layout)
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx          # Main search UI
+│   │   │   └── results/          # Results display page
+│   │   ├── components/           # React Components (Forms, Chalet Cards)
+│   │   ├── hooks/                # Custom hooks (API calls to backend)
+│   │   └── types/                # TypeScript Interfaces (Chalet, Resort)
+│   ├── package.json
+│   ├── tailwind.config.ts
+│   └── tsconfig.json
+│
+├── backend/                      # Python FastAPI & AI Orchestra
+│   ├── app/
+│   │   ├── api/
+│   │   │   └── routes.py         # Endpoints for the frontend to call
+│   │   ├── orchestra/            # The AI Logic
+│   │   │   ├── agents/
+│   │   │   │   ├── resort_scout.py    # Agent 1: Finds resorts
+│   │   │   │   ├── chalet_hunter.py   # Agent 2: Scrapes web for chalets
+│   │   │   │   └── evaluator.py       # Agent 3: Checks distance/price
+│   │   │   ├── tools/
+│   │   │   │   ├── web_scraper.py     # Playwright headless browser setup
+│   │   │   │   └── search_api.py      # Tavily/Google Search integration
+│   │   │   ├── prompts/
+│   │   │   │   └── system_prompts.py  # Instructions for the LLMs
+│   │   │   └── crew.py                # Wires the agents together
+│   │   ├── models/               # Pydantic data models for structured output
+│   │   └── main.py               # FastAPI entry point
+│   ├── .env.example
+│   └── requirements.txt
+│
+└── README.md
