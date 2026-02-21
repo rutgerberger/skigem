@@ -1,13 +1,13 @@
-# 🏔️ SnowGem Orchestra
+# 🏔️ SkiGem Orchestra
 
-SnowGem Orchestra is a multi-agent AI system designed to bypass mainstream aggregators (like Booking.com) and scour the "holes of the internet" to find the perfect, hidden-gem ski resorts and chalets. 
+SkiGem Orchestra is a multi-agent AI system designed to scour the "holes of the internet" to find the perfect, hidden-gem ski resorts and chalets. 
 
 Built with a TypeScript/Next.js frontend and a Python multi-agent backend, this system uses an "orchestra" of specialized AI agents to plan the ultimate winter sports holiday based on highly specific user criteria.
 
 ## ✨ Features
 
 * **Criteria-Based Resort Scouting:** Filters European (or global) ski areas based on slope length, altitude, and country.
-* **Deep-Web Chalet Hunting:** Bypasses hotel aggregators to find standalone chalets on local tourism boards, independent property sites, and niche forums.
+* **Deep-Web Chalet Hunting:** Finds standalone chalets on global sites, but also local tourism boards, independent property sites, and niche forums.
 * **Intelligent Evaluation:** Scores found chalets against strict user requirements (e.g., price limits, walking distance to ski lifts).
 * **Modern UI:** A clean, responsive frontend built with Next.js, React, and Tailwind CSS.
 
@@ -24,7 +24,7 @@ The backend is powered by **CrewAI / LangGraph**, orchestrating three distinct a
 * **Frontend:** Next.js, TypeScript, Tailwind CSS, React Query
 * **Backend:** Python, FastAPI (for the API layer)
 * **AI Orchestration:** CrewAI or LangGraph
-* **LLM:** OpenAI GPT-4o / Anthropic Claude 3.5 Sonnet (for reasoning and parsing unstructured web data)
+* **LLM:** Groq API - can be simple like llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 * **Tools:** Playwright (Web Scraping), Tavily/Serper (Web Search)
 
 ## 🚀 Getting Started
