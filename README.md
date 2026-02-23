@@ -97,7 +97,7 @@ snowgem-orchestra/
 │   │   │   │   └── system_prompts.py  # Instructions for the LLMs
 │   │   │   └── crew.py                # Wires the agents together
 │   │   ├── models/               # Pydantic data models for structured output
-│   │   └── main.py               # FastAPI entry point
+│   │   └── main.py               # F astAPI entry point
 │   ├── .env.example
 │   └── requirements.txt
 │

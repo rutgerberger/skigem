@@ -1,0 +1,17 @@
+# Web Framework
+fastapi==0.110.0
+uvicorn==0.27.1
+pydantic==2.6.4
+
+# AI Orchestration & LLMs
+crewai==0.22.5
+langchain-groq==0.1.0
+groq==0.4.2
+
+# Web Scraping & Search Tools
+playwright==1.42.0
+beautifulsoup4==4.12.3
+tavily-python==0.3.3
+
+# Utilities
+python-dotenv==1.0.0
