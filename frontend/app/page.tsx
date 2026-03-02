@@ -1,187 +1,206 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { Michroma } from 'next/font/google';
 
-// Mirroring the Python Pydantic models
-interface Chalet {
+// Component Imports
+import DataSearchModule from "./components/DataSearchModule";
+import MapOverlayModule from "./components/MapOverlayModule";
+
+const michroma = Michroma({ weight: '400', subsets: ['latin'] });
+
+// Define the shape of our database response
+interface ResortData {
+  id: number;
   name: string;
-  url: string;
-  price_per_night: number;
-  distance_to_lift_m: number;
-  hidden_gem_score: number;
-  reasoning: string;
-}
-
-interface SearchResult {
-  resort_name: string;
-  resort_slope_km: number;
-  chalets: Chalet[];
+  latitude: number;
+  longitude: number;
+  country: string | null;
 }
 
 export default function Home() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<SearchResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
-  async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setResult(null);
+  // State for our database resorts
+  const [allResorts, setAllResorts] = useState<ResortData[]>([]);
 
-    const formData = new FormData(e.currentTarget);
-    const criteria = {
-      country: formData.get("country"),
-      min_slope_length_km: parseInt(formData.get("min_slope") as string),
-      max_budget_per_night: parseFloat(formData.get("budget") as string),
-      lift_proximity_m: parseInt(formData.get("proximity") as string),
-      additional_requirements: formData.get("requirements") || null,
-    };
+  // My Resorts Module Autocomplete State
+  const [myResortsQuery, setMyResortsQuery] = useState("");
+  const [myResortsResults, setMyResortsResults] = useState<ResortData[]>([]);
+  const [showMyResortsDropdown, setShowMyResortsDropdown] = useState(false);
+  const myResortsDropdownRef = useRef<HTMLDivElement>(null);
 
-    try {
-      const res = await fetch("http://127.0.0.1:8000/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(criteria),
-      });
+  // --- NEW: FETCH RESORTS FROM DB ON MOUNT ---
+  useEffect(() => {
+    async function loadDatabaseResorts() {
+      try {
+        const res = await fetch("http://localhost:8000/api/resorts");
+        if (res.ok) {
+          const data = await res.json();
+          setAllResorts(data);
+        }
+      } catch (err) {
+        console.error("SYS_ERR: Failed to load resort database", err);
+      }
+    }
+    loadDatabaseResorts();
+  }, []);
 
-      if (!res.ok) throw new Error("The Orchestra hit a wrong note. Check backend logs.");
-      
-      const data = await res.json();
-      setResult(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (myResortsDropdownRef.current && !myResortsDropdownRef.current.contains(event.target as Node)) {
+        setShowMyResortsDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function handleMyResortsSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const query = e.target.value;
+    setMyResortsQuery(query);
+    if (query.length > 0) {
+      const filtered = allResorts.filter((resort) => 
+        resort.name.toLowerCase().includes(query.toLowerCase())
+      );
+      setMyResortsResults(filtered);
+      setShowMyResortsDropdown(true);
+    } else {
+      setMyResortsResults([]);
+      setShowMyResortsDropdown(false);
     }
   }
 
-  return (
-    // FULL SCREEN EPIC BACKGROUND WITH DARK OVERLAY
-    <main className="min-h-screen relative bg-[url('https://images.unsplash.com/photo-1495619744764-2cc11fcbe5f0?q=80&w=1732&auto=format&fit=crop')] bg-cover bg-center bg-fixed text-slate-100 font-sans selection:bg-cyan-500 selection:text-white">
-      {/* Dark gradient overlay to ensure text readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-slate-900/50 to-slate-900/50 pointer-events-none"></div>
+  function handleSelectMyResort(resort: ResortData) {
+    setMyResortsQuery(""); 
+    setShowMyResortsDropdown(false);
+    router.push(`/resort-center/${encodeURIComponent(resort.name)}`);
+  }
 
-      <div className="relative z-10 max-w-5xl mx-auto space-y-12 pt-20 pb-24 px-6 md:px-12">
+  return (
+    <main className="min-h-screen relative bg-[url('/background_img.png')] bg-cover bg-center bg-fixed text-slate-800 font-mono selection:bg-cyan-500 selection:text-white">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] pointer-events-none"></div>
+      <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 via-transparent to-orange-950/30 pointer-events-none"></div>
+
+      <div className="relative z-10 max-w-6xl mx-auto space-y-12 pt-24 pb-24 px-6 md:px-12">
         
-        {/* HERO HEADER */}
-        <div className="text-center space-y-4 animate-fade-in-down">
-          <h1 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-200 to-white drop-shadow-lg tracking-tight">
-            S K I G E M
+        {/* System Header */}
+        <div className="space-y-2 animate-fade-in-down drop-shadow-xl border-l-4 border-cyan-500 pl-4">
+          <p className="text-xs text-cyan-500/80 font-bold uppercase tracking-widest">
+            SYSTEM_STATUS: ONLINE_OK // USER: GUEST_SKIGEEK
+          </p>
+          <h1 className={`text-slate-500 text-cyan-400 text-4xl text-white tracking-widest`}>
+            SCHIHUB<span className="text-cyan-500">.</span>
           </h1>
-          <p className="text-lg md:text-xl text-cyan-100/80 max-w-2xl mx-auto font-light">
-            Uncover the ultimate, uncrowded alpine chalets hidden deep within the web.
+          <p className="text-lg md:text-xl text-cyan-100/80 font-medium max-w-2xl drop-shadow-md">
+            PLAN_MISSION. STATUS: READY.
           </p>
         </div>
 
-        {/* GLASSMORPHISM SEARCH FORM */}
-        <form 
-          onSubmit={handleSearch} 
-          className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 md:p-10 rounded-3xl shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-6 relative overflow-hidden"
-        >
-          {/* Subtle glow effect behind form */}
-          <div className="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none"></div>
+        {/* Modularized Unified Data Search */}
+        <DataSearchModule />
 
-          <div>
-            <label className="block text-sm font-semibold text-cyan-50 mb-2 uppercase tracking-wider">Target Country</label>
-            <input name="country" type="text" defaultValue="Austria" className="w-full bg-slate-900/50 border border-white/10 text-white placeholder-slate-400 p-4 rounded-xl focus:ring-2 focus:ring-cyan-400 focus:outline-none transition-all" required />
+        {/* Data Modules Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-cyan-500 p-6 rounded-md shadow-lg space-y-4">
+            <h3 className="text-lg font-bold text-cyan-500 uppercase tracking-widest">MODULE: MY_EXPEDITIONS</h3>
+            <ul className="text-slate-300 text-sm space-y-2">
+              <li className="flex items-center gap-2"><span className="text-cyan-500 font-bold">&gt;</span> PLAN_NEW</li>
+              <li className="flex items-center gap-2"><span className="text-cyan-500 font-bold">&gt;</span> SAVED_TRIPS</li>
+              <li className="flex items-center gap-2"><span className="text-cyan-500 font-bold">&gt;</span> ACTIVE_STATUS: N/A</li>
+            </ul>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-cyan-50 mb-2 uppercase tracking-wider">Min Slopes (km)</label>
-            <input name="min_slope" type="number" defaultValue={100} className="w-full bg-slate-900/50 border border-white/10 text-white placeholder-slate-400 p-4 rounded-xl focus:ring-2 focus:ring-cyan-400 focus:outline-none transition-all" required />
+
+          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-purple-500 p-6 rounded-md shadow-lg space-y-4">
+            <h3 className="text-lg font-bold text-purple-500 uppercase tracking-widest">MODULE: MY_TELEMETRY</h3>
+            <ul className="text-slate-300 text-sm space-y-2">
+              <li className="flex items-center gap-2"><span className="text-purple-500 font-bold">&gt;</span> AI_ROAST_LEVEL: LOW</li>
+              <li className="flex items-center gap-2"><span className="text-purple-500 font-bold">&gt;</span> VERT_DROP: --- M</li>
+              <li className="flex items-center gap-2"><span className="text-purple-500 font-bold">&gt;</span> MAX_VELOCITY: --- KM/H</li>
+            </ul>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-cyan-50 mb-2 uppercase tracking-wider">Max Budget / Night (€)</label>
-            <input name="budget" type="number" defaultValue={150} className="w-full bg-slate-900/50 border border-white/10 text-white placeholder-slate-400 p-4 rounded-xl focus:ring-2 focus:ring-cyan-400 focus:outline-none transition-all" required />
+
+          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-pink-500 p-6 rounded-md shadow-lg space-y-4 flex flex-col relative z-40">
+            <h3 className="text-lg font-bold text-pink-500 uppercase tracking-widest">MODULE: MY_RESORTS</h3>
+            <div className="relative z-20 flex-grow" ref={myResortsDropdownRef}>
+              <div className="flex bg-slate-950/50 border border-slate-700 focus-within:border-pink-500 rounded-sm p-1 items-center shadow-inner">
+                <span className="text-pink-500/50 pl-2 font-bold select-none">&gt;</span>
+                <input 
+                  type="text"
+                  value={myResortsQuery}
+                  onChange={handleMyResortsSearchChange}
+                  onFocus={() => { if (myResortsResults.length > 0) setShowMyResortsDropdown(true); }}
+                  placeholder={allResorts.length === 0 ? "AWAITING_DB_SYNC..." : "Find resort to open Hub..."}
+                  disabled={allResorts.length === 0}
+                  className="w-full bg-transparent text-xs text-pink-300 placeholder-slate-600 p-2 focus:outline-none tracking-wider disabled:opacity-50"
+                />
+              </div>
+              {showMyResortsDropdown && myResortsResults.length > 0 && (
+                <ul className="absolute top-full left-0 w-full mt-1 bg-slate-900 border border-pink-500/50 rounded-sm shadow-2xl max-h-48 overflow-y-auto z-50">
+                  {myResortsResults.map((resort) => (
+                    <li 
+                      key={resort.id} 
+                      className="p-2 text-xs text-slate-300 hover:bg-pink-900/50 hover:text-pink-300 cursor-pointer transition-colors border-b border-slate-800 last:border-0 flex items-center gap-2" 
+                      onClick={() => handleSelectMyResort(resort)}
+                    >
+                      <span className="text-pink-500 font-bold">&gt;</span>
+                      {resort.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!myResortsQuery && (
+                <p className="text-xs text-slate-500 italic mt-3 border-l-2 border-slate-700 pl-2">
+                  AWAITING_INPUT: Type to link resort telemetry hub.
+                </p>
+              )}
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-cyan-50 mb-2 uppercase tracking-wider">Max Distance to Lift (m)</label>
-            <input name="proximity" type="number" defaultValue={500} className="w-full bg-slate-900/50 border border-white/10 text-white placeholder-slate-400 p-4 rounded-xl focus:ring-2 focus:ring-cyan-400 focus:outline-none transition-all" required />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-cyan-50 mb-2 uppercase tracking-wider">Additional Requirements (Optional)</label>
-            <input name="requirements" type="text" placeholder="e.g., sauna, pet-friendly, fireplace, ski-in ski-out" className="w-full bg-slate-900/50 border border-white/10 text-white placeholder-slate-500 p-4 rounded-xl focus:ring-2 focus:ring-cyan-400 focus:outline-none transition-all" />
+
+          {/* Modularized Map System */}
+          <MapOverlayModule />
+          
+          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-red-500 p-6 rounded-md shadow-lg space-y-4">
+            <h3 className="text-lg font-bold text-red-500 uppercase tracking-widest">MODULE: EXPERT_ZONE</h3>
+            <ul className="text-slate-300 text-sm space-y-2">
+              <li className="flex items-center gap-2"><span className="text-red-500 font-bold">&gt;</span> TO_COULIORS</li>
+              <li className="flex items-center gap-2"><span className="text-red-500 font-bold">&gt;</span> EPIC_RUNS_LOG</li>
+              <li className="flex items-center gap-2"><span className="text-red-500 font-bold">&gt;</span> LAWINE_GEFAHR_LIVE</li>
+            </ul>
           </div>
           
-          <button 
-            type="submit" 
-            disabled={loading}
-            className={`md:col-span-2 mt-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all transform hover:-translate-y-1 disabled:opacity-70 disabled:hover:translate-y-0 disabled:cursor-not-allowed ${loading ? 'animate-pulse' : ''}`}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="animate-spin text-2xl">❄️</span> Agents are scouring the deep web...
-              </span>
-            ) : (
-              "Unleash the Hunt 🏂"
-            )}
+          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-purple-500 p-6 rounded-md shadow-lg space-y-4 col-span-1 md:col-span-2">
+            <h3 className="text-lg font-bold text-purple-500 uppercase tracking-widest">MODULE: SOCIAL_FEED</h3>
+            <ul className="text-slate-300 text-sm space-y-2">
+              <li className="flex items-center gap-2"><span className="text-purple-500 font-bold">&gt;</span> GUEST_JOHANNES &gt; JUST_LOGGED: 15k_VERTICAL (ST. ANTON)</li>
+              <li className="flex items-center gap-2"><span className="text-purple-500 font-bold">&gt;</span> GUEST_ANNA &gt; PLAN_MISSION: ISCHGL</li>
+              <li className="flex items-center gap-2"><span className="text-purple-500 font-bold">&gt;</span> LEADERBOARD &gt; VERTIKAL_DROP_PER_EURO: N/A</li>
+            </ul>
+          </div>
+          
+          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-cyan-500 p-6 rounded-md shadow-lg space-y-4">
+            <h3 className="text-lg font-bold text-cyan-500 uppercase tracking-widest">MODULE: AI_CENTER</h3>
+            <ul className="text-slate-300 text-sm space-y-2">
+              <li className="flex items-center gap-2"><span className="text-cyan-500 font-bold">&gt;</span> ENHANCE_MY_TRIP</li>
+              <li className="flex items-center gap-2"><span className="text-cyan-500 font-bold">&gt;</span> POWDER_PANIC_PREDICTOR</li>
+              <li className="flex items-center gap-2"><span className="text-cyan-500 font-bold">&gt;</span> BYPASS_THE_QUEUE_SUGGESTION</li>
+            </ul>
+          </div>
+
+        </div>
+
+        <div className="text-center bg-slate-900/80 p-6 rounded-lg shadow-inner border border-purple-500/20 max-w-2xl mx-auto">
+          <p className="text-xs text-purple-500 font-bold uppercase tracking-widest">ACCESS_LEVEL: GUEST_ACCESS</p>
+          <p className="text-sm text-slate-400 mt-2">
+            Try ACCO search once for FREE. UPGRADE for full telemetry access, powder alerts, and expert zone data.
+          </p>
+          <button className="bg-purple-600 hover:bg-purple-500 text-slate-950 font-black tracking-widest uppercase text-sm py-2 px-6 rounded-md mt-4 shadow-[0_0_15px_rgba(147,51,234,0.4)]">
+            GET PRO ACCESS
           </button>
-        </form>
+        </div>
 
-        {/* ERROR MESSAGE */}
-        {error && (
-          <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 text-red-100 p-6 rounded-2xl shadow-lg flex items-center gap-4">
-            <span className="text-3xl">⚠️</span>
-            <p className="font-medium">{error}</p>
-          </div>
-        )}
-
-        {/* RESULTS DISPLAY */}
-        {result && (
-          <div className="space-y-8 animate-fade-in-up">
-            
-            {/* Target Resort Banner */}
-            <div className="bg-gradient-to-r from-blue-900/80 to-slate-900/80 backdrop-blur-xl border border-cyan-500/30 p-8 rounded-3xl text-center shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-400 to-blue-600"></div>
-              <p className="text-cyan-400 font-semibold tracking-widest uppercase text-sm mb-2">Destination Secured</p>
-              <h2 className="text-4xl font-black text-white mb-2">{result.resort_name}</h2>
-              <p className="text-blue-200 text-lg flex justify-center items-center gap-2">
-                <span>⛰️</span> {result.resort_slope_km} km of pure adrenaline
-              </p>
-            </div>
-
-            {/* Chalet Grid */}
-            <div className="grid grid-cols-1 gap-6">
-              {result.chalets.map((chalet, idx) => (
-                <div key={idx} className="group bg-slate-900/60 backdrop-blur-lg border border-white/10 p-6 md:p-8 rounded-3xl flex flex-col md:flex-row justify-between gap-6 hover:bg-slate-800/80 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(6,182,212,0.15)]">
-                  
-                  <div className="space-y-4 flex-1">
-                    <div className="flex items-start justify-between">
-                      <h3 className="text-2xl font-bold text-white group-hover:text-cyan-300 transition-colors">{chalet.name}</h3>
-                      <div className="flex items-center gap-1 bg-cyan-950/80 border border-cyan-800/50 px-3 py-1 rounded-full text-cyan-300 text-sm font-bold shadow-inner">
-                        💎 {chalet.hidden_gem_score}/10
-                      </div>
-                    </div>
-                    
-                    <p className="text-slate-300 italic border-l-2 border-cyan-500/50 pl-4 py-1 text-sm md:text-base">
-                      "{chalet.reasoning}"
-                    </p>
-                    
-                    <div className="flex flex-wrap gap-3 text-sm font-semibold text-slate-200 mt-4">
-                      <span className="bg-slate-800/80 border border-slate-700 px-4 py-2 rounded-xl flex items-center gap-2">
-                        💶 €{chalet.price_per_night} <span className="text-slate-400 font-normal">/ night</span>
-                      </span>
-                      <span className="bg-slate-800/80 border border-slate-700 px-4 py-2 rounded-xl flex items-center gap-2">
-                        🚠 {chalet.distance_to_lift_m}m <span className="text-slate-400 font-normal">to lift</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center md:items-stretch">
-                    <a 
-                      href={chalet.url} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="w-full md:w-auto flex items-center justify-center bg-white/10 border border-white/20 hover:bg-cyan-500 hover:border-cyan-400 text-white px-8 py-3 rounded-xl transition-all duration-300 font-bold whitespace-nowrap shadow-lg group-hover:shadow-cyan-500/20"
-                    >
-                      Inspect Chalet ↗
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </main>
   );

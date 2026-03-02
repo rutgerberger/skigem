@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router as api_router
+from app.database import engine
+from app.models.domain import Base
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="SkiGem Orchestra API",
