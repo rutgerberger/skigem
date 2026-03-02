@@ -9,10 +9,20 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from langchain_groq import ChatGroq
 
-# Import our updated Pydantic models
-from app.models.schemas import SearchCriteria, Phase1Result, Phase2Result, UserFeedback, Chalet, ResortTelemetry, ResortResponse
-# Added 'Resort' to the domain imports
-from app.models.domain import User, InteractionLog, SavedChalet, ResortTelemetryCache, Resort
+# Import our updated Pydantic models (Added Trip schemas)
+from app.models.schemas import (
+    SearchCriteria, Phase1Result, Phase2Result, UserFeedback, Chalet, 
+    ResortTelemetry, ResortResponse, TripCreate, TripResponse, 
+    TripLegCreate, TripLegResponse
+)
+
+# Import our domain models 
+# NOTE: We alias the DB model to 'DBChalet' to prevent collision with the Pydantic 'Chalet' schema!
+from app.models.domain import (
+    User, InteractionLog, ResortTelemetryCache, Resort, 
+    Chalet as DBChalet, Trip, TripLeg
+)
+
 from app.database import get_db, SessionLocal
 
 # Import our workflows and the new personality updater
@@ -36,6 +46,7 @@ class SaveChaletRequest(BaseModel):
 
 class UpdateImageRequest(BaseModel):
     image_url: str
+
 
 # ==========================================
 # BACKGROUND TASKS
@@ -70,13 +81,14 @@ def process_feedback_background(user_id: int, feedback_dict: dict):
     finally:
         db.close()
 
+
 # ==========================================
-# USER FAVORITES (STEP 6)
+# USER FAVORITES / CHALET SAVING
 # ==========================================
 @router.post("/chalets/save")
 async def save_chalet(request: SaveChaletRequest, db: Session = Depends(get_db)):
     """
-    Saves a specific chalet to the user's favorites in the database.
+    Saves a specific chalet to the database.
     """
     try:
         # Ensure user exists
@@ -86,8 +98,8 @@ async def save_chalet(request: SaveChaletRequest, db: Session = Depends(get_db))
             db.add(user)
             db.commit()
             
-        # Add the chalet to the database
-        saved_item = SavedChalet(
+        # Add the chalet to the database (Using the aliased DBChalet model)
+        saved_item = DBChalet(
             user_id=request.user_id,
             resort_name=request.resort_name,
             chalet_name=request.chalet.name,
@@ -101,7 +113,7 @@ async def save_chalet(request: SaveChaletRequest, db: Session = Depends(get_db))
         db.add(saved_item)
         db.commit()
         
-        # Also log this as a positive interaction to feed the personality engine!
+        # Log interaction for personality engine
         new_log = InteractionLog(
             user_id=request.user_id,
             chalet_id=saved_item.id,
@@ -111,7 +123,7 @@ async def save_chalet(request: SaveChaletRequest, db: Session = Depends(get_db))
         db.add(new_log)
         db.commit()
 
-        return {"status": "success", "message": "Chalet successfully saved to favorites."}
+        return {"status": "success", "message": "Chalet successfully saved to database.", "chalet_id": saved_item.id}
         
     except Exception as e:
         db.rollback()
@@ -120,11 +132,8 @@ async def save_chalet(request: SaveChaletRequest, db: Session = Depends(get_db))
 
 @router.get("/user/{user_id}/saved")
 async def get_saved_chalets(user_id: int, db: Session = Depends(get_db)):
-    """
-    Retrieves all saved chalets for a specific user.
-    """
     try:
-        saved_items = db.query(SavedChalet).filter(SavedChalet.user_id == user_id).all()
+        saved_items = db.query(DBChalet).filter(DBChalet.user_id == user_id).all()
         return {"user_id": user_id, "saved_chalets": saved_items}
     except Exception as e:
         traceback.print_exc()
@@ -132,14 +141,10 @@ async def get_saved_chalets(user_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/user/{user_id}/saved/{chalet_id}")
 async def delete_saved_chalet(user_id: int, chalet_id: int, db: Session = Depends(get_db)):
-    """
-    Removes a specific chalet from the user's favorites archive.
-    """
     try:
-        # Find the record that matches both the ID and the User ID (for security)
-        item_to_delete = db.query(SavedChalet).filter(
-            SavedChalet.id == chalet_id, 
-            SavedChalet.user_id == user_id
+        item_to_delete = db.query(DBChalet).filter(
+            DBChalet.id == chalet_id, 
+            DBChalet.user_id == user_id
         ).first()
 
         if not item_to_delete:
@@ -147,7 +152,6 @@ async def delete_saved_chalet(user_id: int, chalet_id: int, db: Session = Depend
 
         db.delete(item_to_delete)
         db.commit()
-
         return {"status": "success", "message": "Target purged from archive."}
     except Exception as e:
         db.rollback()
@@ -155,19 +159,11 @@ async def delete_saved_chalet(user_id: int, chalet_id: int, db: Session = Depend
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/user/{user_id}/saved/{chalet_id}/image")
-async def update_saved_chalet_image(
-    user_id: int, 
-    chalet_id: int, 
-    request: UpdateImageRequest, 
-    db: Session = Depends(get_db)
-):
-    """
-    Allows the user to manually override the image URL for a saved target.
-    """
+async def update_saved_chalet_image(user_id: int, chalet_id: int, request: UpdateImageRequest, db: Session = Depends(get_db)):
     try:
-        item = db.query(SavedChalet).filter(
-            SavedChalet.id == chalet_id, 
-            SavedChalet.user_id == user_id
+        item = db.query(DBChalet).filter(
+            DBChalet.id == chalet_id, 
+            DBChalet.user_id == user_id
         ).first()
 
         if not item:
@@ -175,28 +171,114 @@ async def update_saved_chalet_image(
 
         item.image_url = request.image_url
         db.commit()
-
         return {"status": "success", "message": "Image data successfully overwritten."}
     except Exception as e:
         db.rollback()
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ==========================================
+# TRIP PLANNER ENDPOINTS (PHASE 2 UPGRADE)
+# ==========================================
+
+@router.post("/trips", response_model=TripResponse)
+async def create_trip(trip_data: TripCreate, db: Session = Depends(get_db)):
+    """Creates a new empty trip."""
+    try:
+        new_trip = Trip(**trip_data.model_dump())
+        db.add(new_trip)
+        db.commit()
+        db.refresh(new_trip)
+        return new_trip
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/trips", response_model=List[TripResponse])
+async def get_all_trips(user_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Fetches all trips, optionally filtered by user ID."""
+    try:
+        query = db.query(Trip)
+        if user_id:
+            query = query.filter(Trip.user_id == user_id)
+        return query.all()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/trips/{trip_id}", response_model=TripResponse)
+async def get_trip_by_id(trip_id: int, db: Session = Depends(get_db)):
+    """Fetches a specific trip, auto-populating all associated legs, resorts, and chalets."""
+    try:
+        trip = db.query(Trip).filter(Trip.id == trip_id).first()
+        if not trip:
+            raise HTTPException(status_code=404, detail="Trip not found in database.")
+        return trip
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/trips/{trip_id}/legs", response_model=TripLegResponse)
+async def add_trip_leg(trip_id: int, leg_data: TripLegCreate, db: Session = Depends(get_db)):
+    """Adds a resort (and optionally a chalet) as a stop on an existing trip."""
+    try:
+        # Verify trip exists
+        trip = db.query(Trip).filter(Trip.id == trip_id).first()
+        if not trip:
+            raise HTTPException(status_code=404, detail="Target Trip not found.")
+            
+        # Verify resort exists
+        resort = db.query(Resort).filter(Resort.id == leg_data.resort_id).first()
+        if not resort:
+            raise HTTPException(status_code=404, detail="Target Resort not found.")
+
+        # If a chalet ID was provided, verify it exists too
+        if leg_data.chalet_id:
+            chalet = db.query(DBChalet).filter(DBChalet.id == leg_data.chalet_id).first()
+            if not chalet:
+                raise HTTPException(status_code=404, detail="Target Chalet not found.")
+
+        new_leg = TripLeg(
+            trip_id=trip_id,
+            resort_id=leg_data.resort_id,
+            chalet_id=leg_data.chalet_id,
+            arrival_date=leg_data.arrival_date,
+            departure_date=leg_data.departure_date,
+            order_index=leg_data.order_index
+        )
+        
+        db.add(new_leg)
+        db.commit()
+        db.refresh(new_leg)
+        
+        return new_leg
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/trips/{trip_id}")
+async def delete_trip(trip_id: int, db: Session = Depends(get_db)):
+    """Nukes a trip and cascades the deletion to all associated trip legs."""
+    try:
+        trip = db.query(Trip).filter(Trip.id == trip_id).first()
+        if not trip:
+            raise HTTPException(status_code=404, detail="Trip not found.")
+            
+        db.delete(trip)
+        db.commit()
+        return {"status": "success", "message": f"Trip {trip_id} and all nested legs successfully erased."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==========================================
 # USER FEEDBACK ENDPOINT
 # ==========================================
 @router.post("/feedback")
-async def submit_feedback(
-    feedback: UserFeedback, 
-    background_tasks: BackgroundTasks, 
-    db: Session = Depends(get_db)
-):
-    """
-    Saves a thumbs up/down interaction and triggers an asynchronous update 
-    of the user's personality profile.
-    """
+async def submit_feedback(feedback: UserFeedback, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
-        # Ensure the user exists in the DB (Create if they don't)
         user = db.query(User).filter(User.id == feedback.user_id).first()
         if not user:
             user = User(id=feedback.user_id, personality_summary="")
@@ -204,7 +286,6 @@ async def submit_feedback(
             db.commit()
             db.refresh(user)
 
-        # Save the raw interaction log
         new_log = InteractionLog(
             user_id=feedback.user_id,
             chalet_id=feedback.chalet_id,
@@ -214,7 +295,6 @@ async def submit_feedback(
         db.add(new_log)
         db.commit()
 
-        # Trigger the LLM profile update in the background
         feedback_dict = {"thumb_status": feedback.thumb_status, "reason": feedback.reason}
         background_tasks.add_task(process_feedback_background, user.id, feedback_dict)
 
@@ -229,32 +309,18 @@ async def submit_feedback(
 # ==========================================
 @router.get("/resorts", response_model=List[ResortResponse])
 async def get_all_resorts(db: Session = Depends(get_db)):
-    """
-    Returns the full list of active resorts from the database.
-    Useful for populating frontend state and dropdowns.
-    """
     return db.query(Resort).all()
 
 @router.get("/resorts/search")
 async def autocomplete_resorts(q: str = Query(""), db: Session = Depends(get_db)):
-    """
-    Quickly searches the database for frontend autocomplete dropdowns.
-    Returns a list of matching resort names.
-    """
     query_lower = f"%{q.lower()}%"
     resorts = db.query(Resort).filter(Resort.name.ilike(query_lower)).all()
-    
-    # Returning just the names as a list to maintain compatibility with your existing frontend
     return {"results": [resort.name for resort in resorts]}
 
 @router.post("/hunt_direct", response_model=Phase2Result)
 async def hunt_direct(request: PhaseBRequest, db: Session = Depends(get_db)):
-    """
-    Directly hunts for chalets in a known resort, completely bypassing the Resort Scout phase.
-    """
     try:
         user_personality = ""
-        # Fetch the user's personality if an ID was provided
         if request.user_id:
             user = db.query(User).filter(User.id == request.user_id).first()
             if user and user.personality_summary:
@@ -262,8 +328,6 @@ async def hunt_direct(request: PhaseBRequest, db: Session = Depends(get_db)):
                 print(f"🧠 [Agent Info] Direct Hunt with personality: {user_personality}")
                 
         criteria_dict = request.criteria.model_dump()
-        
-        # Directly invoke Phase B logic
         result_data = run_phase_b_hunter(criteria_dict, request.target_resort, user_personality)
         return Phase2Result(**result_data)
         
@@ -279,9 +343,6 @@ async def hunt_direct(request: PhaseBRequest, db: Session = Depends(get_db)):
 # ==========================================
 @router.post("/search/resorts", response_model=Phase1Result)
 async def scout_resorts(criteria: SearchCriteria):
-    """
-    Phase A: Takes user criteria and returns 3-5 highly curated ski resorts.
-    """
     try:
         criteria_dict = criteria.model_dump()
         result_data = run_phase_a_scout(criteria_dict)
@@ -299,10 +360,6 @@ async def scout_resorts(criteria: SearchCriteria):
 # ==========================================
 @router.post("/search/chalets", response_model=Phase2Result)
 async def hunt_chalets(request: PhaseBRequest, db: Session = Depends(get_db)):
-    """
-    Phase B: Scrapes chalets, taking user personality into account if a user_id is provided.
-    (Used when continuing from Phase A)
-    """
     try:
         user_personality = ""
         if request.user_id:
@@ -327,13 +384,8 @@ async def hunt_chalets(request: PhaseBRequest, db: Session = Depends(get_db)):
 # ==========================================
 @router.get("/resort/{resort_slug}/telemetry", response_model=ResortTelemetry)
 async def get_resort_telemetry(resort_slug: str, db: Session = Depends(get_db)):
-    """
-    Fetches real-time weather, snow, and lift data for a verified resort.
-    Checks cache first to prevent redundant agent scraping.
-    """
     target_resort = resort_slug 
 
-    # 1. STRICT VALIDATION VIA DATABASE
     resort_record = db.query(Resort).filter(Resort.name.ilike(f"%{target_resort}%")).first()
     
     if not resort_record:
@@ -342,24 +394,20 @@ async def get_resort_telemetry(resort_slug: str, db: Session = Depends(get_db)):
             detail=f"ACCESS DENIED. '{target_resort}' is not within authorized scouting parameters."
         )
         
-    # Standardize the target name based on our DB source of truth
     target_resort = resort_record.name
 
     try:
         now = datetime.now(timezone.utc)
         
-        # 2. CHECK THE CACHE
         cached_record = db.query(ResortTelemetryCache).filter(ResortTelemetryCache.resort_name == target_resort).first()
         
         if cached_record and cached_record.updated_at:
-            # Safely handle timezone-naive DB timestamps (SQLite)
             updated_time = cached_record.updated_at
             if updated_time.tzinfo is None:
                 updated_time = updated_time.replace(tzinfo=timezone.utc)
                 
             age_in_hours = (now - updated_time).total_seconds() / 3600
             
-            # If the data is less than 24 hours old, intercept and return immediately!
             if age_in_hours < 24.0:
                 print(f"⚡ [Cache Hit] Returning stored telemetry for {target_resort} (Age: {round(age_in_hours, 1)}h)")
                 
@@ -369,17 +417,14 @@ async def get_resort_telemetry(resort_slug: str, db: Session = Depends(get_db)):
                 
                 return ResortTelemetry(**payload)
 
-        # 3. CACHE MISS / EXPIRED -> DEPLOY AGENT
         print(f"📡 [Cache Miss] Scraping fresh telemetry streams for {target_resort}...")
         telemetry_data = gather_resort_telemetry(target_resort)
         
         source_urls = telemetry_data.pop("source_urls", [])
 
-        # 4. SAVE OR UPDATE THE DATABASE
         if cached_record:
             cached_record.telemetry_data = telemetry_data
             cached_record.source_urls = source_urls
-            # SQLAlchemy `onupdate=func.now()` handles the timestamp refresh automatically
         else:
             new_record = ResortTelemetryCache(
                 resort_name=target_resort,
@@ -390,7 +435,6 @@ async def get_resort_telemetry(resort_slug: str, db: Session = Depends(get_db)):
             
         db.commit()
 
-        # 5. ATTACH THE FRESH TIMESTAMP AND RETURN TO FRONTEND
         telemetry_data["source_urls"] = source_urls
         telemetry_data["last_updated"] = now.isoformat()
 

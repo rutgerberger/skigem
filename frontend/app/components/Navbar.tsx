@@ -10,6 +10,7 @@ const navLinks = [
   { name: "CORE_HUB", path: "/" },
   { name: "TRIP_PLANNER", path: "/trip-planner" }, // Assuming resorts is the entry point
   { name: "TELEMETRY_HUB", path: "/resort-center" }, // Dynamic base
+  { name: "MY_TRIP", path: "/my-trip" },
   { name: "ARCHIVE", path: "/favorites" },
 ];
 

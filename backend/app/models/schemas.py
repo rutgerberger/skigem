@@ -1,5 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
+from datetime import date
 
 class ResortBase(BaseModel):
     name: str
@@ -99,3 +100,53 @@ class ResortTelemetry(BaseModel):
     
     source_urls: List[str] = Field(default_factory=list, description="List of source URLs scraped for this data")
     last_updated: Optional[str] = Field(None, description="Timestamp of when the data was gathered/cached")
+
+# Chalet Response (Needed for nested queries)
+class ChaletResponse(Chalet):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+# Schema for creating/adding a single leg to a trip
+class TripLegCreate(BaseModel):
+    resort_id: int
+    chalet_id: Optional[int] = None
+    arrival_date: Optional[date] = None
+    departure_date: Optional[date] = None
+    order_index: int = 0
+
+# Schema for returning a trip leg (includes full Resort and Chalet objects)
+class TripLegResponse(BaseModel):
+    id: int
+    trip_id: int
+    resort_id: int
+    chalet_id: Optional[int] = None
+    arrival_date: Optional[date] = None
+    departure_date: Optional[date] = None
+    order_index: int
+    
+    # Nested Objects
+    resort: ResortResponse
+    chalet: Optional[ChaletResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+# Schema for creating a brand new Trip
+class TripCreate(BaseModel):
+    name: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    user_id: Optional[int] = None # For guest mode
+
+# Schema for returning a full Trip (includes all nested legs)
+class TripResponse(BaseModel):
+    id: int
+    name: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: str
+    user_id: Optional[int] = None
+    
+    # List of all stops on the trip
+    legs: List[TripLegResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)

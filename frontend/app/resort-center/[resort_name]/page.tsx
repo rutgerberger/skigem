@@ -199,9 +199,9 @@ export default function TelemetryDashboard() {
   const weatherStatus = getWeatherStatus(data.weather.weather_code);
 
   return (
-    <div className="min-h-screen bg-slate-950 relative font-mono selection:bg-cyan-500 selection:text-white pb-20">
-      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1551524164-687a55dd1126?q=80&w=1625&auto=format&fit=crop')] bg-cover bg-center bg-fixed opacity-5"></div>
-      <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm"></div>
+    <div className="min-h-screen relative font-mono selection:bg-cyan-500 selection:text-white pb-20">
+      <div className="absolute bg-[url('/resort_background_img.png')] inset-0 bg-cover bg-center bg-fixed opacity-1"></div>
+      <div className="absolute bg-[url('/resort_background_img.png')] inset-0 bg-cover bg-center bg-fixed backdrop-blur-sm"></div>
 
       <div className="relative z-10 max-w-7xl mx-auto p-6 md:p-10 pt-24 text-white">
 

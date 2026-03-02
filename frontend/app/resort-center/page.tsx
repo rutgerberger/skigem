@@ -18,25 +18,12 @@ const HOT_RESORTS = [
 
 export default function GlobalTelemetryHub() {
   return (
-    <main className="min-h-screen relative bg-[url('/background_mountain.png')] bg-cover bg-center bg-fixed text-slate-800 font-mono selection:bg-cyan-500 selection:text-white pb-20">
+    <main className="min-h-screen relative bg-[url('/resort_background_img.png')] bg-cover bg-center bg-fixed text-slate-800 font-mono selection:bg-cyan-500 selection:text-white pb-20">
       {/* Background Overlays */}
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[3px] pointer-events-none"></div>
       <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 via-transparent to-cyan-950/20 pointer-events-none"></div>
 
       <div className="relative z-10 max-w-7xl mx-auto space-y-8 pt-10 px-6 md:px-12 flex flex-col">
-        
-        {/* System Header */}
-        <div className="space-y-2 animate-fade-in-down drop-shadow-xl border-l-4 border-cyan-500 pl-4 mt-8">
-          <p className="text-xs text-cyan-500/80 font-bold uppercase tracking-widest">
-            SYSTEM_STATUS: ONLINE_OK // USER: GUEST_SKIGEEK
-          </p>
-          <h1 className="text-4xl text-white tracking-widest uppercase font-black drop-shadow-lg">
-            RESORT_CENTER<span className="text-cyan-500">_</span>
-          </h1>
-          <p className="text-sm md:text-base text-cyan-100/80 font-medium max-w-2xl drop-shadow-md">
-            Find resorts by typing in the search bar. Or click on the map to triangulate.
-          </p>
-        </div>
 
         {/* --- MAIN HERO GRID: Map (Left) + Target Lists (Right) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-down delay-100">

@@ -32,7 +32,8 @@ function TripPlannerOrchestrator() {
 
   return (
     // ADDED: font-mono selection:bg-cyan-500 selection:text-white to match the system vibe
-    <div className="min-h-screen bg-slate-950 flex flex-col bg-[url('https://images.unsplash.com/photo-1495619744764-2cc11fcbe5f0?q=80&w=1732&auto=format&fit=crop')] bg-cover bg-center bg-fixed font-mono selection:bg-cyan-500 selection:text-white">
+    //<div className="min-h-screen bg-slate-950 flex flex-col bg-[url('https://images.unsplash.com/photo-1495619744764-2cc11fcbe5f0?q=80&w=1732&auto=format&fit=crop')] bg-cover bg-center bg-fixed font-mono selection:bg-cyan-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 flex flex-col bg-[url('/resort_background_img.png')] bg-cover bg-center bg-fixed font-mono selection:bg-cyan-500 selection:text-white">
       
       {/* MISSION STEPPER NAV */}
       <div className="w-full bg-slate-900/80 border-b border-slate-800 pt-10 p-4 z-40 backdrop-blur-sm">

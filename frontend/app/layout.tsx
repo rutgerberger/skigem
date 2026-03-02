@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Schihub: true ski geeks",
+  title: "Schihub: Where Ski Geeks Meet",
   description: "Finding hidden ski gems with AI",
 };
 
