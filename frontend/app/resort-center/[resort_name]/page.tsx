@@ -2,70 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Map, Marker } from "pigeon-maps";
-
-// --- HELPER: WMO WEATHER CODE TRANSLATOR ---
-function getWeatherStatus(code: number) {
-  if (code === 0) return { icon: "☀️", label: "CLEAR_SKY" };
-  if (code === 1 || code === 2) return { icon: "⛅", label: "PARTLY_CLOUDY" };
-  if (code === 3) return { icon: "☁️", label: "OVERCAST" };
-  if (code === 45 || code === 48) return { icon: "🌫️", label: "FOG_DETECTED" };
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return { icon: "🌧️", label: "PRECIP_RAIN" };
-  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return { icon: "🌨️", label: "PRECIP_SNOW" };
-  if (code >= 95) return { icon: "⛈️", label: "STORM_WARNING" };
-  return { icon: "📡", label: "CALIBRATING..." };
-}
-
-// --- SUB-COMPONENT: GEOSPATIAL MAP MODULE ---
-function GeospatialModule({ resortName, lat, lon }: { resortName: string, lat: number, lon: number }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [is3dMode, setIs3dMode] = useState(false);
-
-  useEffect(() => {
-    document.body.style.overflow = isExpanded ? "hidden" : "unset";
-    return () => { document.body.style.overflow = "unset"; };
-  }, [isExpanded]);
-
-  return (
-    <div className={`transition-all duration-500 ${
-      isExpanded 
-        ? 'fixed inset-4 z-[100] bg-slate-950/95 backdrop-blur-3xl border-l-4 border-cyan-500 p-8 rounded-xl shadow-2xl flex flex-col' 
-        : 'bg-slate-900/80 backdrop-blur-xl border-l-2 border-cyan-500/50 p-6 rounded-md shadow-lg flex flex-col w-full h-full'
-    }`}>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-bold text-cyan-500 uppercase tracking-widest">MOD_04 // GEOSPATIAL_OVERLAY</h3>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => setIs3dMode(!is3dMode)}
-            className={`text-[9px] px-2 py-1 border font-bold tracking-widest transition-colors ${is3dMode ? 'bg-orange-500 text-slate-900 border-orange-500' : 'bg-transparent text-slate-500 border-slate-700 hover:text-orange-500 hover:border-orange-500'}`}
-          >
-            {is3dMode ? "[ PRO ] 3D_TERRAIN: REQ_UPGRADE" : "3D_TERRAIN"}
-          </button>
-          <button 
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-[9px] px-2 py-1 border border-cyan-500/50 text-cyan-500 hover:bg-cyan-500 hover:text-slate-950 font-bold tracking-widest transition-colors"
-          >
-            {isExpanded ? "COLLAPSE [X]" : "EXPAND [ ]"}
-          </button>
-        </div>
-      </div>
-      
-      <div className={`w-full bg-slate-950/80 border border-slate-700 relative overflow-hidden rounded-sm group z-10 flex-grow ${isExpanded ? 'min-h-[50vh]' : 'min-h-[250px]'}`}>
-        <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent animate-pulse pointer-events-none z-10"></div>
-        
-        <div className="w-full h-full invert-[.95] hue-rotate-[180deg] brightness-75 contrast-125 grayscale-[20%] transition-all duration-700 group-hover:grayscale-0 group-hover:brightness-90 cursor-crosshair">
-          <Map center={[lat, lon]} zoom={12} zoomSnap={false}>
-            <Marker width={40} anchor={[lat, lon]} color="#06b6d4" />
-          </Map>
-        </div>
-        
-        <div className="absolute bottom-3 left-3 z-20 bg-slate-950/90 px-3 py-1.5 border border-cyan-500/40 text-[10px] text-cyan-500 font-bold uppercase tracking-widest shadow-lg backdrop-blur-sm pointer-events-none">
-          SAT_LINK // {resortName.toUpperCase()}
-        </div>
-      </div>
-    </div>
-  );
-}
+import { useSearch } from "../../context/SearchContext";
+import MapOverlayModule from "../../components/MapOverlayModule"; // Adjust path if needed
+import CurrentConditions from "../../components/CurrentConditions";
+import Forecast72h from "../../components/Forecast72h";
+import PrecipitationArchive from "../../components/PrecipitationArchive";
 
 // --- MAIN PAGE COMPONENT ---
 export default function TelemetryDashboard() {
@@ -73,11 +14,12 @@ export default function TelemetryDashboard() {
   const params = useParams(); 
   
   const rawResortParam = params?.resort_name ? decodeURIComponent(params.resort_name as string) : "";
-
+  const { userId } = useSearch();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [mapCoords, setMapCoords] = useState<{lat: number, lon: number}>({ lat: 47.1296, lon: 10.2681 });
 
   useEffect(() => {
@@ -97,29 +39,36 @@ export default function TelemetryDashboard() {
           r.name.toLowerCase().includes(rawResortParam.toLowerCase())
         );
 
-        let targetLat = 47.1296;
-        let targetLon = 10.2681;
+        if (!matchedResort) throw new Error("TARGET_NOT_FOUND_IN_DATABASE");
 
-        if (matchedResort) {
-          targetLat = matchedResort.latitude;
-          targetLon = matchedResort.longitude;
-          setMapCoords({ lat: targetLat, lon: targetLon });
+        const targetLat = matchedResort.latitude;
+        const targetLon = matchedResort.longitude;
+        setMapCoords({ lat: targetLat, lon: targetLon });
+
+        if (userId) {
+          const savedRes = await fetch(`http://localhost:8000/api/user/${userId}/saved_resorts`);
+          if (savedRes.ok) {
+            const savedData = await savedRes.json();
+            setIsSaved(savedData.saved_resorts.some((r: any) => r.id === matchedResort.id));
+          }
         }
 
-        // ADDED weather_code TO THE OPEN METEO QUERY
-        const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat}&longitude=${targetLon}&current=temperature_2m,apparent_temperature,wind_speed_10m,weather_code&hourly=freezing_level_height&daily=snowfall_sum&past_days=28&forecast_days=3&timezone=auto`;
-        
+        const baseAlt = matchedResort.lowest_point || 1000;
+        const peakAlt = matchedResort.highest_point || 2500;
+
+        // HIGH PRECISION UPLINK: We query the exact same coordinate twice, but feed it the two different elevations.
+        // Open-Meteo returns an array: [0] is Valley data, [1] is Peak data based on their meteorological models.
+        //const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat},${targetLat}&longitude=${targetLon},${targetLon}&elevation=${baseAlt},${peakAlt}&current=temperature_2m,wind_speed_10m,snow_depth,weather_code&hourly=temperature_2m,snow_depth,freezing_level_height,snowfall,rain,cloud_cover,wind_speed_10m&forecast_days=3&timezone=auto`;
+        const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat},${targetLat}&longitude=${targetLon},${targetLon}&elevation=${baseAlt},${peakAlt}&current=temperature_2m,wind_speed_10m,snow_depth,weather_code&hourly=temperature_2m,snow_depth,freezing_level_height,snowfall,rain,cloud_cover,wind_speed_10m&daily=snowfall_sum&past_days=28&forecast_days=3&timezone=auto`;
         const res = await fetch(meteoUrl);
         if (!res.ok) throw new Error("PUBLIC_UPLINK_FAILED: Weather satellite did not respond.");
-        const meteoData = await res.json();
-
-        const current = meteoData.current || {};
-        const hourly = meteoData.hourly || {};
-        const daily = meteoData.daily || {};
-
+        
+        const meteoDataArray = await res.json();
+        const valleyData = meteoDataArray[0];
+        const peakData = meteoDataArray[1];
         const historical_4_weeks = [];
+        const daily = valleyData.daily || {};
         let forecast_48h = 0;
-
         if (daily.time && daily.snowfall_sum) {
           for(let i = 0; i < 28; i++) {
             historical_4_weeks.push({
@@ -129,33 +78,49 @@ export default function TelemetryDashboard() {
           }
           forecast_48h = (daily.snowfall_sum[28] || 0) + (daily.snowfall_sum[29] || 0);
         }
+        // Fetch Telemetry from our backend for Map URL
+        const telemetryRes = await fetch(`http://localhost:8000/api/resort/${encodeURIComponent(matchedResort.name)}/telemetry`);
+        let aiTelemetry: any = {};
+        if (telemetryRes.ok) {
+           aiTelemetry = await telemetryRes.json();
+        }
 
-        const mockTelemetry = {
-          resort_name: matchedResort ? matchedResort.name : rawResortParam,
-          weather: {
-            temp_peak_c: Math.round(current.temperature_2m) || -2,
-            wind_speed_kmh: Math.round(current.wind_speed_10m) || 15,
-            weather_code: current.weather_code !== undefined ? current.weather_code : 0, // NEW DATA POINT
+        const currentFreeze = valleyData.hourly?.freezing_level_height?.[0] || 2000;
+
+        const finalTelemetry = {
+          resort_name: matchedResort.name,
+          db_stats: matchedResort, 
+          weather_code: valleyData.current?.weather_code !== undefined ? valleyData.current.weather_code : 0,
+          live_conditions: {
+            valleyAlt: baseAlt,
+            peakAlt: peakAlt,
+            valleyTemp: Math.round(valleyData.current?.temperature_2m || 0),
+            peakTemp: Math.round(peakData.current?.temperature_2m || 0),
+            valleyWind: Math.round(valleyData.current?.wind_speed_10m || 0),
+            peakWind: Math.round(peakData.current?.wind_speed_10m || 0),
+            valleySnowDepth: Math.round((valleyData.current?.snow_depth || 0) * 100), // m to cm
+            peakSnowDepth: Math.round((peakData.current?.snow_depth || 0) * 100),     // m to cm
+            freezingLevel: Math.round(currentFreeze),
+            snowLevel: Math.round(currentFreeze - 300), // Meteorological standard: snow is 300m below freezing line
+          },
+          forecast_72h: {
+            time: valleyData.hourly?.time || [],
+            tempPeak: peakData.hourly?.temperature_2m || [],
+            tempValley: valleyData.hourly?.temperature_2m || [],
+            snowCm: valleyData.hourly?.snowfall || [],
+            rainMm: valleyData.hourly?.rain || [],
+            windKmh: valleyData.hourly?.wind_speed_10m || [],
+            cloudCover: valleyData.hourly?.cloud_cover || [],
+            freezingLevel: valleyData.hourly?.freezing_level_height || [],
           },
           snow: {
-            base_depth_cm: 145, 
             forecast_next_48h_cm: Math.round(forecast_48h),
             historical_4_weeks: historical_4_weeks.length ? historical_4_weeks : Array(28).fill({ date: "N/A", amount_cm: 0 }),
           },
-          open_lifts: 38, 
-          total_lifts: 45, 
-          deep_cuts: {
-            wind_chill_c: Math.round(current.apparent_temperature) || -8,
-            freezing_level_m: hourly.freezing_level_height ? Math.round(hourly.freezing_level_height[0]) : 2150,
-            avalanche_danger: 3, 
-            avalanche_trend: "STABLE", 
-            artificial_snow_pct: 78, 
-            lift_mechanics: { high_speed_quad_pct: 65, tbar_pct: 12, gondola_pct: 23 }, 
-            economy: { beer_05l_eur: 6.80, kaiserschmarrn_eur: 14.50 } 
-          }
+          official_ski_map_url: aiTelemetry.official_ski_map_url || null
         };
 
-        setData(mockTelemetry);
+        setData(finalTelemetry);
       } catch (err: any) {
         setError(err.message || "Failed to establish connection.");
       } finally {
@@ -164,7 +129,29 @@ export default function TelemetryDashboard() {
     }
 
     fetchPublicTelemetry();
-  }, [rawResortParam]);
+  }, [rawResortParam, userId]);
+
+  const handleToggleSave = async () => {
+    if (!data?.db_stats?.id || !userId) return;
+    setIsSaving(true);
+    try {
+      if (isSaved) {
+        const res = await fetch(`http://localhost:8000/api/user/${userId}/saved_resorts/${data.db_stats.id}`, { method: "DELETE" });
+        if (res.ok) setIsSaved(false);
+      } else {
+        const res = await fetch(`http://localhost:8000/api/resorts/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, resort_id: data.db_stats.id }),
+        });
+        if (res.ok) setIsSaved(true);
+      }
+    } catch (err) {
+      console.error("SYS_ERR: Failed to update archives.", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 font-mono gap-4 text-cyan-500">
@@ -186,17 +173,10 @@ export default function TelemetryDashboard() {
     </div>
   );
 
-  const getAvalancheColor = (level: number) => {
-    if (level <= 2) return "text-yellow-400 border-yellow-900";
-    if (level === 3) return "text-orange-500 border-orange-700 shadow-[0_0_15px_rgba(249,115,22,0.4)] animate-pulse";
-    return "text-red-500 border-red-700 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse";
-  };
-
-  const localMaxSnowfall = Math.max(...data.snow.historical_4_weeks.map((d: any) => d.amount_cm), 0); 
-  const chartScaleMax = Math.max(localMaxSnowfall, 25);
-  
-  // Calculate current weather state
-  const weatherStatus = getWeatherStatus(data.weather.weather_code);
+  const totalKm = data.db_stats.total_slopes || 1; // prevent division by zero
+  const pBeginner = ((data.db_stats.beginner_slopes || 0) / totalKm) * 100;
+  const pIntermediate = ((data.db_stats.intermediate_slopes || 0) / totalKm) * 100;
+  const pExpert = ((data.db_stats.difficult_slopes || 0) / totalKm) * 100;
 
   return (
     <div className="min-h-screen relative font-mono selection:bg-cyan-500 selection:text-white pb-20">
@@ -211,171 +191,169 @@ export default function TelemetryDashboard() {
               <span className="text-cyan-500">_</span> {data.resort_name}
             </h1>
             <p className="text-cyan-600/80 mt-2 text-xs font-bold uppercase tracking-[0.3em]">
-              DEEP_CUT_TELEMETRY_HUB
+              DATABASE_LINK_ESTABLISHED // LOCATION: {data.db_stats.country}
             </p>
           </div>
-          <div className="text-right flex flex-col items-start md:items-end">
-             <span className="text-[10px] text-slate-500 tracking-widest uppercase">SYS_STATUS // OPEN_API_LIVE</span>
-             <span className="text-cyan-400 font-bold tracking-widest uppercase text-xs">DATA_AGE: &lt; 1 MIN</span>
+          
+          <div className="text-left md:text-right flex flex-col items-start md:items-end gap-2">
+             <button 
+               onClick={handleToggleSave}
+               disabled={isSaving || !userId}
+               className={`text-[10px] px-3 py-1.5 border font-bold tracking-widest uppercase transition-all flex items-center gap-2 ${
+                 isSaved 
+                  ? 'bg-pink-900/40 text-pink-400 border-pink-500/50 hover:bg-pink-900/80 hover:text-pink-300' 
+                  : 'bg-slate-900/60 text-cyan-500 border-cyan-500/50 hover:bg-cyan-900/80 hover:text-cyan-300'
+               } ${isSaving || !userId ? 'opacity-50 cursor-not-allowed' : ''}`}
+             >
+               {isSaving ? "SYNCING..." : isSaved ? "[-] REMOVE_FROM_ARCHIVE" : "[+] ADD_TO_ARCHIVE"}
+             </button>
+
+            <div className="flex flex-col items-start md:items-end">
+              <span className="text-[10px] text-slate-500 tracking-widest uppercase">SYS_STATUS // OPEN_API_LIVE</span>
+              <span className="text-cyan-400 font-bold tracking-widest uppercase text-xs mt-1">DATA_AGE: &lt; 1 MIN</span>
+            </div>
           </div>
         </div>
 
-        {/* --- DASHBOARD GRID --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* COL 1: ATMOSPHERIC & HAZARD */}
-          <div className="flex flex-col gap-6">
-            <div className="bg-slate-900/80 border border-slate-800 p-6">
-              <div className="flex justify-between items-start border-b border-slate-800 pb-2 mb-4">
-                <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase">MOD_01 // ATMOSPHERIC</h2>
-                
-                {/* DYNAMIC WEATHER ICON */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-cyan-500 font-bold uppercase tracking-widest bg-cyan-950/50 px-2 py-1 border border-cyan-900">
-                    {weatherStatus.label}
-                  </span>
-                  <span className="text-xl drop-shadow-lg">{weatherStatus.icon}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-y-6 gap-x-4 mt-6">
-                <div>
-                  <span className="block text-[9px] text-slate-500 tracking-widest uppercase">PEAK_TEMP</span>
-                  <span className="text-2xl text-cyan-400 font-bold">{data.weather.temp_peak_c}°C</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] text-slate-500 tracking-widest uppercase">WIND_CHILL</span>
-                  <span className="text-2xl text-cyan-600 font-bold">{data.deep_cuts.wind_chill_c}°C</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] text-slate-500 tracking-widest uppercase">WIND_VELOCITY</span>
-                  <span className="text-lg text-slate-300 font-bold">{data.weather.wind_speed_kmh} <span className="text-xs">KM/H</span></span>
-                </div>
-                <div>
-                  <span className="block text-[9px] text-slate-500 tracking-widest uppercase">FREEZING_LEVEL</span>
-                  <span className="text-lg text-slate-300 font-bold">{data.deep_cuts.freezing_level_m} <span className="text-xs">M</span></span>
-                </div>
-              </div>
-            </div>
-
-            <div className={`bg-slate-900/80 border p-6 transition-colors ${getAvalancheColor(data.deep_cuts.avalanche_danger)}`}>
-              <h2 className="text-xs font-bold tracking-widest uppercase mb-4 opacity-70 border-b border-current pb-2">MOD_02 // HAZARD_&_SNOW</h2>
-              
-              <div className="flex justify-between items-end mb-6">
-                <div>
-                  <span className="block text-[9px] uppercase tracking-widest opacity-80">LAWINENGEFAHR (1-5)</span>
-                  <span className="text-5xl font-black">{data.deep_cuts.avalanche_danger}</span>
-                </div>
-                <div className="text-right">
-                  <span className="block text-[9px] uppercase tracking-widest opacity-80">TREND</span>
-                  <span className="text-xl font-bold uppercase tracking-widest">[{data.deep_cuts.avalanche_trend}]</span>
-                </div>
-              </div>
-
-              <div className="space-y-4 border-t border-current pt-4 opacity-90">
-                <div>
-                  <div className="flex justify-between text-[10px] tracking-widest uppercase mb-1">
-                    <span>NATURAL_BASE [SIMULATED]</span><span>{data.snow.base_depth_cm} CM</span>
-                  </div>
-                  <div className="w-full bg-slate-950 h-1.5"><div className="bg-current h-full" style={{ width: `${Math.min((data.snow.base_depth_cm / 200) * 100, 100)}%` }}></div></div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[10px] tracking-widest uppercase mb-1">
-                    <span>ARTIFICIAL_CANNON_COVERAGE</span><span>{data.deep_cuts.artificial_snow_pct}%</span>
-                  </div>
-                  <div className="w-full bg-slate-950 h-1.5"><div className="bg-current h-full" style={{ width: `${data.deep_cuts.artificial_snow_pct}%` }}></div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* COL 2: INFRASTRUCTURE & ECONOMY */}
-          <div className="flex flex-col gap-6">
-            <div className="bg-slate-900/80 border border-slate-800 p-6 flex-1">
-              <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase mb-4 border-b border-slate-800 pb-2">MOD_03 // LIFT_MECHANICS</h2>
-              
-              <div className="flex justify-between items-end mb-6">
-                <span className="text-4xl font-black text-white">{data.open_lifts} <span className="text-xl text-slate-600">/ {data.total_lifts}</span></span>
-                <span className="text-cyan-400 text-[10px] tracking-widest uppercase font-bold border border-cyan-900 px-2 py-1 bg-cyan-950/30">ACTIVE</span>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-[10px] tracking-widest text-slate-400 uppercase mb-1">
-                    <span>HIGH_SPEED_DETACHABLE</span><span>{data.deep_cuts.lift_mechanics.high_speed_quad_pct}%</span>
-                  </div>
-                  <div className="w-full bg-slate-950 border border-slate-800 h-2"><div className="bg-emerald-500 h-full shadow-[0_0_8px_rgba(16,185,129,0.4)]" style={{ width: `${data.deep_cuts.lift_mechanics.high_speed_quad_pct}%` }}></div></div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[10px] tracking-widest text-slate-400 uppercase mb-1">
-                    <span>GONDOLA / CABLE_CAR</span><span>{data.deep_cuts.lift_mechanics.gondola_pct}%</span>
-                  </div>
-                  <div className="w-full bg-slate-950 border border-slate-800 h-2"><div className="bg-cyan-500 h-full" style={{ width: `${data.deep_cuts.lift_mechanics.gondola_pct}%` }}></div></div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[10px] tracking-widest text-slate-400 uppercase mb-1">
-                    <span>T-BAR / DRAG_LIFT (PAIN_INDEX)</span><span>{data.deep_cuts.lift_mechanics.tbar_pct}%</span>
-                  </div>
-                  <div className="w-full bg-slate-950 border border-slate-800 h-2"><div className="bg-red-500 h-full" style={{ width: `${data.deep_cuts.lift_mechanics.tbar_pct}%` }}></div></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-900/80 border border-slate-800 p-6">
-              <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase mb-4 border-b border-slate-800 pb-2">MOD_04 // APRÉS_ECONOMY</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="border border-slate-800 bg-slate-950/50 p-3 text-center">
-                  <span className="block text-[8px] text-slate-500 tracking-widest uppercase mb-1">BEER_INDEX (0.5L)</span>
-                  <span className="text-xl text-green-400 font-mono font-bold">€{data.deep_cuts.economy.beer_05l_eur.toFixed(2)}</span>
-                </div>
-                <div className="border border-slate-800 bg-slate-950/50 p-3 text-center">
-                  <span className="block text-[8px] text-slate-500 tracking-widest uppercase mb-1">KAISERSCHMARRN</span>
-                  <span className="text-xl text-yellow-400 font-mono font-bold">€{data.deep_cuts.economy.kaiserschmarrn_eur.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* COL 3: MAP MODULE */}
-          <div className="lg:col-span-1 h-full min-h-[300px]">
-            <GeospatialModule resortName={data.resort_name} lat={mapCoords.lat} lon={mapCoords.lon} />
-          </div>
-
-          {/* FULL WIDTH: HISTORICAL PRECIPITATION */}
-          <div className="lg:col-span-3 bg-slate-900/80 border border-slate-800 p-6 flex flex-col">
-            <div className="flex justify-between items-end border-b border-slate-800 pb-2 mb-6">
-               <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase">MOD_05 // PRECIPITATION_ARCHIVE</h2>
-               <span className="text-[10px] text-cyan-400 tracking-widest uppercase bg-cyan-950/50 px-2 py-1 border border-cyan-900">NEXT 48H FORECAST: {data.snow.forecast_next_48h_cm} CM</span>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* ============================== */}
+          {/* LEFT COLUMN (Data Modules)     */}
+          {/* ============================== */}
+          <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
             
-            <div className="h-48 w-full flex items-end justify-between gap-1 px-2 pt-8 border-b border-slate-800/50 bg-slate-950/50 overflow-x-auto pb-2">
-              {data.snow.historical_4_weeks.map((day: any, idx: number) => {
-                const heightPct = (day.amount_cm / chartScaleMax) * 100; 
+            {/* MOD 02: TERRAIN PROFILE */}
+            <div className="bg-slate-900/80 border border-slate-800 p-6">
+              <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase border-b border-slate-800 pb-2 mb-6 flex justify-between">
+                <span>MOD_02 // TERRAIN_PROFILE</span>
+                <span className="text-white">{data.db_stats.total_slopes} <span className="text-slate-500">TOTAL KM</span></span>
+              </h2>
+              
+              <div className="flex justify-between items-end mb-6">
+                <div>
+                  <span className="block text-[9px] uppercase tracking-widest opacity-80">ELEVATION_DELTA</span>
+                  <span className="text-3xl font-black text-cyan-400">{data.db_stats.lowest_point}M - {data.db_stats.highest_point}M</span>
+                </div>
+              </div>
+
+              {/* Vertical Progress Bars */}
+              <div className="flex items-end justify-around h-32 border-b border-slate-800 pb-2 mt-6">
+                <div className="flex flex-col items-center justify-end h-full w-16 group">
+                  <span className="text-[10px] text-blue-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.beginner_slopes}km</span>
+                  <div className="w-full bg-blue-500 transition-all duration-500" style={{ height: `${pBeginner}%` }}></div>
+                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">BEG</span>
+                </div>
                 
-                return (
-                  <div key={idx} className="flex-1 flex flex-col items-center justify-end group min-w-[20px] h-full">
-                    <div className="w-full flex-1 flex items-end justify-center relative">
-                      <div 
-                        className={`w-full transition-all duration-500 relative flex justify-center
-                          ${day.amount_cm > 0 ? 'bg-cyan-800 group-hover:bg-cyan-500 border-t border-cyan-400/50' : 'bg-transparent'}`}
-                        style={{ height: `${Math.max(heightPct, day.amount_cm > 0 ? 3 : 0)}%` }}
-                      >
-                         {day.amount_cm > 0 && (
-                           <span className="text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity absolute -top-6 z-20 bg-slate-900 px-1 rounded-sm border border-slate-700">
-                             {day.amount_cm}cm
-                           </span>
-                         )}
-                      </div>
-                    </div>
-                    <span className={`text-[7px] text-slate-500 mt-2 truncate w-full text-center tracking-tighter uppercase group-hover:text-cyan-400 ${idx % 4 === 0 ? 'block' : 'hidden md:block'}`}>
-                      {day.date}
-                    </span>
-                  </div>
-                );
-              })}
+                <div className="flex flex-col items-center justify-end h-full w-16 group">
+                  <span className="text-[10px] text-red-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.intermediate_slopes}km</span>
+                  <div className="w-full bg-red-500 transition-all duration-500" style={{ height: `${pIntermediate}%` }}></div>
+                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">INT</span>
+                </div>
+
+                <div className="flex flex-col items-center justify-end h-full w-16 group">
+                  <span className="text-[10px] text-slate-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.difficult_slopes}km</span>
+                  <div className="w-full bg-slate-500 transition-all duration-500" style={{ height: `${pExpert}%` }}></div>
+                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">EXP</span>
+                </div>
+              </div>
+              
+              <div className="pt-4 flex justify-between text-[10px] text-slate-500 tracking-widest uppercase">
+                <span>SNOW_CANNONS: {data.db_stats.snow_cannons}</span>
+                <span>SNOWPARK: {data.db_stats.snowparks ? 'YES' : 'NO'}</span>
+              </div>
             </div>
+
+            {/* MOD 01: CURRENT CONDITIONS */}
+            <CurrentConditions data={data.live_conditions} weatherCode={data.weather_code} />
+
+            {/* MOD 05: 72H FORECAST */}
+            <Forecast72h data={data.forecast_72h} />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* MOD 03: LIFT MECHANICS */}
+              <div className="bg-slate-900/80 border border-slate-800 p-6 flex flex-col justify-between">
+                <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase mb-4 border-b border-slate-800 pb-2">MOD_03 // LIFT_MECHANICS</h2>
+                <div className="flex justify-between items-end mb-6">
+                  <span className="text-4xl font-black text-white">{data.db_stats.total_lifts} <span className="text-xl text-slate-600">LIFTS</span></span>
+                  <span className="text-cyan-400 text-[10px] tracking-widest uppercase font-bold border border-cyan-900 px-2 py-1 bg-cyan-950/30">CAP: {data.db_stats.lift_capacity}/HR</span>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-[10px] tracking-widest text-slate-400 uppercase mb-1">
+                      <span>GONDOLA</span><span>{data.db_stats.gondola_lifts}</span>
+                    </div>
+                    <div className="w-full bg-slate-950 border border-slate-800 h-2"><div className="bg-cyan-500 h-full" style={{ width: `${(data.db_stats.gondola_lifts / data.db_stats.total_lifts) * 100}%` }}></div></div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] tracking-widest text-slate-400 uppercase mb-1">
+                      <span>CHAIR</span><span>{data.db_stats.chair_lifts}</span>
+                    </div>
+                    <div className="w-full bg-slate-950 border border-slate-800 h-2"><div className="bg-emerald-500 h-full" style={{ width: `${(data.db_stats.chair_lifts / data.db_stats.total_lifts) * 100}%` }}></div></div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] tracking-widest text-slate-400 uppercase mb-1">
+                      <span>SURFACE</span><span>{data.db_stats.surface_lifts}</span>
+                    </div>
+                    <div className="w-full bg-slate-950 border border-slate-800 h-2"><div className="bg-red-500 h-full" style={{ width: `${(data.db_stats.surface_lifts / data.db_stats.total_lifts) * 100}%` }}></div></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* MOD 04: ECONOMICS */}
+              <div className="bg-slate-900/80 border border-slate-800 p-6 flex flex-col">
+                <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase mb-4 border-b border-slate-800 pb-2">MOD_04 // ECONOMICS</h2>
+                <div className="grid grid-cols-1 gap-4 flex-grow content-center">
+                  <div className="border border-slate-800 bg-slate-950/50 p-4 text-center">
+                    <span className="block text-[9px] text-slate-500 tracking-widest uppercase mb-1">TICKET_PRICE</span>
+                    <span className="text-2xl text-green-400 font-mono font-bold">€{data.db_stats.price}</span>
+                  </div>
+                  <div className="border border-slate-800 bg-slate-950/50 p-4 text-center">
+                    <span className="block text-[9px] text-slate-500 tracking-widest uppercase mb-1">FAMILY_RATING</span>
+                    <span className="text-lg text-yellow-400 font-mono font-bold">{data.db_stats.child_friendly ? "VERIFIED" : "WARNING"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <PrecipitationArchive snowData={data.snow} />
+
           </div>
 
+          {/* ============================== */}
+          {/* RIGHT COLUMN (Maps)            */}
+          {/* ============================== */}
+          <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-6">
+            
+            {/* MOD 06: OFFICIAL SKI MAP */}
+            <div className="bg-slate-900/80 border border-slate-800 p-6 flex flex-col">
+              <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase border-b border-slate-800 pb-2 mb-6 flex justify-between">
+                <span>MOD_06 // OFFICIAL_TRAIL_MAP</span>
+              </h2>
+              {data.official_ski_map_url ? (
+                <div 
+                  className="w-full overflow-hidden bg-slate-950 border border-slate-800 rounded-sm relative group cursor-pointer" 
+                  onClick={() => window.open(data.official_ski_map_url, '_blank')}
+                >
+                  <img 
+                    src={data.official_ski_map_url} 
+                    alt="Map" 
+                    className="w-full h-auto object-cover opacity-80 group-hover:opacity-100 transition-all duration-700" 
+                  />
+                  <div className="absolute bottom-4 right-4 bg-slate-900/90 border border-cyan-500/50 px-4 py-2 text-[10px] text-cyan-400 tracking-widest uppercase font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)] backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    [ CLICK_TO_ENLARGE ]
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-48 bg-slate-950/50 border border-dashed border-slate-700 flex flex-col items-center justify-center">
+                   <span className="text-slate-500 text-xs tracking-widest uppercase">NO_MAP_DATA_FOUND</span>
+                </div>
+              )}
+            </div>
+
+            {/* MOD 07: SATELLITE MAP OVERLAY */}
+            <div className="h-[1000px]">
+            <MapOverlayModule lat={mapCoords.lat} lon={mapCoords.lon} fullHeight={true} />
+            </div>
+          </div>
         </div>
       </div>
     </div>

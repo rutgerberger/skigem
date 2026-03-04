@@ -18,24 +18,27 @@ interface ResortData {
   country: string | null;
 }
 
+// 1. UPDATED: Accept lat, lon, and resortName as optional props
 interface MapOverlayProps {
   fullHeight?: boolean;
+  lat?: number;
+  lon?: number;
+  resortName?: string;
 }
 
-export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps) {
+export default function MapOverlayModule({ fullHeight = false, lat, lon, resortName }: MapOverlayProps) {
   const router = useRouter();
   
   const [allResorts, setAllResorts] = useState<ResortData[]>([]);
   
-  // 1. Tracks the EXACT coordinates for the marker and weather API
+  // 2. UPDATED: Initialize state using props if they exist, otherwise fallback
   const [activeLocation, setActiveLocation] = useState({ 
-    name: "Chamonix Valley, France", 
-    lat: 45.9237, 
-    lon: 6.8694 
+    name: resortName || "Chamonix Valley, France", 
+    lat: lat || 45.9237, 
+    lon: lon || 6.8694 
   });
 
-  // 2. NEW: Tracks the closest resort specifically for the Hub routing URL
-  const [selectedResortForHub, setSelectedResortForHub] = useState<string>("Chamonix Valley, France");
+  const [selectedResortForHub, setSelectedResortForHub] = useState<string>(resortName || "Chamonix Valley, France");
   
   const [is3dMode, setIs3dMode] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
@@ -50,6 +53,19 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
 
   const [mapInstance, setMapInstance] = useState<any>(null);
   const [customIcon, setCustomIcon] = useState<any>(null);
+
+  // 3. NEW: Listen for prop changes. If the parent dashboard finishes loading 
+  // and passes new coordinates, instantly snap the map to them.
+  useEffect(() => {
+    if (lat !== undefined && lon !== undefined) {
+      setActiveLocation({
+        name: resortName || `CSTM_${lat.toFixed(2)}_${lon.toFixed(2)}`,
+        lat: lat,
+        lon: lon
+      });
+      if (resortName) setSelectedResortForHub(resortName);
+    }
+  }, [lat, lon, resortName]);
 
   // Initialize Custom Cyberpunk Marker
   useEffect(() => {
@@ -71,7 +87,6 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
       const clickedLat = e.latlng.lat;
       const clickedLon = e.latlng.lng;
 
-      // Ensure we have data loaded before trying to find the closest
       if (allResorts.length > 0) {
         let closestResort = allResorts[0];
         let minDistance = Infinity;
@@ -93,18 +108,15 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
           }
         });
 
-        // UPDATE 1: Set pointer and weather to the EXACT clicked spot
         setActiveLocation({
           name: `CSTM_${clickedLat.toFixed(2)}_${clickedLon.toFixed(2)}`,
           lat: clickedLat,
           lon: clickedLon
         });
 
-        // UPDATE 2: Save the closest resort name purely for the Open Hub button
         setSelectedResortForHub(closestResort.name);
         
       } else {
-        // Fallback if the database hasn't loaded yet
         setActiveLocation({
           name: `CSTM_${clickedLat.toFixed(2)}_${clickedLon.toFixed(2)}`,
           lat: clickedLat,
@@ -146,7 +158,9 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
         if (res.ok) {
           const data: ResortData[] = await res.json();
           setAllResorts(data);
-          if (data.length > 0) {
+          
+          // 4. UPDATED: Only default to data[0] if the parent DID NOT provide lat/lon props.
+          if (data.length > 0 && lat === undefined && lon === undefined) {
              setActiveLocation({ name: data[0].name, lat: data[0].latitude, lon: data[0].longitude });
              setSelectedResortForHub(data[0].name);
           }
@@ -156,7 +170,7 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
       }
     }
     loadDatabaseResorts();
-  }, []);
+  }, [lat, lon]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -231,7 +245,7 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
     <div 
       className={`transition-all duration-500 ${
         isMapExpanded 
-          ? 'fixed inset-4 z-[100] bg-slate-950/95 backdrop-blur-3xl border-l-4 border-cyan-500 p-8 rounded-xl shadow-2xl flex flex-col' 
+          ? 'fixed inset-x-4 bottom-4 top-20 z-[100] bg-slate-950/95 backdrop-blur-3xl border-l-4 border-cyan-500 p-8 rounded-xl shadow-2xl flex flex-col' 
           : `bg-slate-900/80 backdrop-blur-xl border-l-2 border-cyan-500/50 p-6 rounded-md shadow-lg col-span-1 md:col-span-2 space-y-4 flex flex-col ${fullHeight ? 'h-full' : ''}`
       }`}
     >
@@ -291,7 +305,6 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
             style={{ height: "100%", width: "100%", background: "#020617" }}
             attributionControl={false}
           >
-            {/* UPDATED: OpenTopoMap terrain base layer. MaxZoom 17 prevents grey tiles if they zoom too deep */}
             <TileLayer
               url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
               maxZoom={17}
@@ -309,7 +322,6 @@ export default function MapOverlayModule({ fullHeight = false }: MapOverlayProps
           </MapContainer>
         </div>
 
-        {/* UPDATED: Added OpenTopoMap to the attribution array */}
         <div className="absolute bottom-1 right-1 z-[400] text-[8px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded-tl-md backdrop-blur-sm pointer-events-auto">
           © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="hover:text-cyan-500">OSM</a> | 
           Terrain © <a href="https://opentopomap.org" target="_blank" rel="noreferrer" className="hover:text-cyan-500">OpenTopoMap</a> | 

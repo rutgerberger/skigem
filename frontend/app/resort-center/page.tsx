@@ -2,109 +2,142 @@
 
 import Link from "next/link";
 import MapOverlayModule from "../components/MapOverlayModule";
+import MyResortsModule from "../components/MyResortsModule";
+import ResortWeatherCard from "../components/ResortWeatherCard";
+import { useSearch } from "../context/SearchContext";
+import { useEffect, useState } from "react";
 
-// Dummy data for our new modules
-const MY_RESORTS = [
-  { name: "Chamonix", country: "FR", status: "ONLINE" },
-  { name: "St. Anton am Arlberg", country: "AT", status: "ONLINE" },
-  { name: "Zermatt", country: "CH", status: "SYNCING..." },
-];
+// --- HELPER: WMO WEATHER CODE TRANSLATOR ---
+function getWeatherStatus(code: number) {
+  if (code === 0) return { icon: "☀️", label: "CLEAR_SKY" };
+  if (code === 1 || code === 2) return { icon: "⛅", label: "PARTLY_CLOUDY" };
+  if (code === 3) return { icon: "☁️", label: "OVERCAST" };
+  if (code === 45 || code === 48) return { icon: "🌫️", label: "FOG_DETECTED" };
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return { icon: "🌧️", label: "PRECIP_RAIN" };
+  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return { icon: "🌨️", label: "PRECIP_SNOW" };
+  if (code >= 95) return { icon: "⛈️", label: "STORM_WARNING" };
+  return { icon: "📡", label: "CALIBRATING..." };
+}
 
-const HOT_RESORTS = [
-  { name: "Verbier", metric: "60cm POWDER", condition: "DUMPING", color: "text-cyan-400", border: "border-cyan-500" },
-  { name: "Ischgl", metric: "BLUEBIRD", condition: "CLEAR", color: "text-yellow-400", border: "border-yellow-500" },
-  { name: "Kitzbühel", metric: "LOW HAZARD", condition: "STABLE", color: "text-green-400", border: "border-green-500" },
-];
+// Define the interface based on what the AI returns + enriched fields
+interface HotResort {
+  name: string;
+  metric: string;
+  condition: string;
+  color: string;
+  border: string;
+  temp?: number;
+  isSnowing?: boolean;
+  lastSnowDate?: string;
+  lastSnowAmount?: number;
+  weatherLabel?: string;
+  weatherIcon?: string;
+}
 
 export default function GlobalTelemetryHub() {
+  const { userId } = useSearch();
+  
+  const [hotResorts, setHotResorts] = useState<HotResort[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(true);
+
+  const fetchTrendingResorts = async (force: boolean = false) => {
+    setIsRefreshing(true);
+    try {
+      const endpoint = force 
+        ? "http://localhost:8000/api/telemetry/trending?force=true" 
+        : "http://localhost:8000/api/telemetry/trending";
+        
+      const res = await fetch(endpoint);
+      if (res.ok) {
+        const data = await res.json();
+        // Just set the raw AI data. The Card component will handle the weather fetching!
+        setHotResorts(data.resorts || []);
+      }
+    } catch (err) {
+      console.error("Failed to load trending resorts", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTrendingResorts(false);
+  }, []);
+
   return (
     <main className="min-h-screen relative bg-[url('/resort_background_img.png')] bg-cover bg-center bg-fixed text-slate-800 font-mono selection:bg-cyan-500 selection:text-white pb-20">
-      {/* Background Overlays */}
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[3px] pointer-events-none"></div>
       <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 via-transparent to-cyan-950/20 pointer-events-none"></div>
 
       <div className="relative z-10 max-w-7xl mx-auto space-y-8 pt-10 px-6 md:px-12 flex flex-col">
 
-        {/* --- MAIN HERO GRID: Map (Left) + Target Lists (Right) --- */}
+{/* --- MAIN HERO GRID: Map (Left) + Target Lists (Right) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-down delay-100">
           
-          {/* Global Map Module - Takes up 2/3 of the screen width on Desktop */}
-          <div className="lg:col-span-2 w-full h-[50vh] lg:h-[65vh] min-h-[450px] flex flex-col relative group border border-slate-700 rounded-md overflow-hidden shadow-2xl">
+          {/* Global Map Module - Increased height to match the new right sidebar */}
+          <div className="lg:col-span-2 w-full h-[60vh] lg:h-[80vh] min-h-[700px] flex flex-col relative group border border-slate-700 rounded-md overflow-hidden shadow-2xl">
             <div className="absolute inset-0 bg-cyan-500/5 blur-xl group-hover:bg-cyan-500/10 transition-colors pointer-events-none -z-10"></div>
             <div className="flex-1 w-full h-full">
               <MapOverlayModule fullHeight={true} />
             </div>
           </div>
 
-          {/* Right Sidebar: My Resorts & Hot Resorts */}
-          <div className="lg:col-span-1 flex flex-col gap-6 h-[50vh] lg:h-[65vh] min-h-[450px]">
+          {/* Right Sidebar: My Resorts & Hot Resorts - Increased overall height */}
+          <div className="lg:col-span-1 flex flex-col gap-6 h-[60vh] lg:h-[80vh] min-h-[700px]">
             
-            {/* MY RESORTS */}
-            <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 border-l-2 border-l-cyan-500 p-6 rounded-md shadow-lg flex-1 flex flex-col overflow-hidden">
-              <h3 className="text-sm font-bold text-cyan-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">
-                [+] SAVED_TARGETS
-              </h3>
-              <div className="overflow-y-auto custom-scrollbar flex-1 space-y-3 pr-2">
-                {MY_RESORTS.map((resort, idx) => (
-                  <Link 
-                    key={idx} 
-                    href={`/resort-center/${encodeURIComponent(resort.name)}`}
-                    className="block bg-slate-950/50 border border-slate-800 p-3 hover:border-cyan-500/50 hover:bg-slate-900 transition-all group"
-                  >
-                    <div className="flex justify-between items-start">
-                      <span className="text-slate-200 text-sm font-bold uppercase group-hover:text-cyan-400 transition-colors">
-                        {resort.name}
-                      </span>
-                      <span className="text-[9px] text-slate-500">{resort.country}</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${resort.status === 'ONLINE' ? 'bg-cyan-500 shadow-[0_0_5px_cyan]' : 'bg-slate-500'}`}></div>
-                      <span className="text-[9px] text-slate-400 tracking-widest">{resort.status}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+            {/* MY RESORTS (Given flex-[1.2] so it takes slightly more of the new vertical space) */}
+            <div className="flex-[1.2] overflow-hidden flex flex-col">
+              <MyResortsModule userId={userId} />
             </div>
 
-            {/* HOT RESORTS */}
+            {/* HOT RESORTS (Keeps its original flex-1 share) */}
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 border-l-2 border-l-orange-500 p-6 rounded-md shadow-lg flex-1 flex flex-col overflow-hidden relative">
               <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-orange-500/10 to-transparent pointer-events-none"></div>
+              
               <h3 className="text-sm font-bold text-orange-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2 flex justify-between items-center">
                 <span>[!] HIGH_PRIORITY</span>
-                <span className="text-[10px] bg-orange-950/50 text-orange-400 px-2 py-0.5 border border-orange-900 rounded-sm animate-pulse">BOOMING</span>
-              </h3>
-              <div className="overflow-y-auto custom-scrollbar flex-1 space-y-3 pr-2">
-                {HOT_RESORTS.map((resort, idx) => (
-                  <Link 
-                    key={idx} 
-                    href={`/resort-center/${encodeURIComponent(resort.name)}`}
-                    className={`block bg-slate-950/50 border border-slate-800 p-3 hover:bg-slate-900 transition-all group hover:border-orange-500/50`}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => fetchTrendingResorts(true)}  
+                    disabled={isRefreshing}
+                    className={`text-xs border border-orange-900 px-2 py-0.5 hover:bg-orange-500 hover:text-slate-950 transition-colors ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
+                    title="Run AI Web Scrape"
                   >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="text-slate-200 text-sm font-bold uppercase group-hover:text-white transition-colors">
-                        {resort.name}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center mt-2 border-t border-slate-800/50 pt-2">
-                      <span className={`text-[10px] font-bold tracking-widest ${resort.color}`}>
-                        {resort.metric}
-                      </span>
-                      <span className="text-[9px] text-slate-500 tracking-widest border border-slate-700 px-1 py-0.5">
-                        {resort.condition}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
+                    {isRefreshing ? "SCANNING..." : "↻ RESCAN"}
+                  </button>
+                  <span className="text-[10px] bg-orange-950/50 text-orange-400 px-2 py-0.5 border border-orange-900 rounded-sm animate-pulse">BOOMING</span>
+                </div>
+              </h3>
+              
+              <div className="overflow-y-auto custom-scrollbar flex-1 space-y-3 pr-2">
+                {isRefreshing && hotResorts.length === 0 ? (
+                  <div className="text-center text-orange-500/50 text-xs py-8 animate-pulse">
+                    DEPLOYING AGENTS...
+                  </div>
+                ) : (
+                  hotResorts.map((resort, idx) => (
+                    <ResortWeatherCard
+                      key={idx}
+                      name={resort.name}
+                      href={`/resort-center/${encodeURIComponent(resort.name)}`}
+                      aiData={{
+                        metric: resort.metric,
+                        condition: resort.condition,
+                        color: resort.color,
+                        border: resort.border
+                      }}
+                    />
+                  ))
+                )}
               </div>
             </div>
 
           </div>
         </div>
-
+        
         {/* --- LOWER INTELLIGENCE MODULES --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-down delay-200">
           
-          {/* News Feed - Takes up 2 columns to give room for reading */}
           <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-purple-500 p-6 rounded-md shadow-lg space-y-4 md:col-span-2">
             <h3 className="text-lg font-bold text-purple-500 uppercase tracking-widest mb-2">MODULE: NETWORK_INTEL</h3>
             <div className="space-y-3">
@@ -125,7 +158,6 @@ export default function GlobalTelemetryHub() {
             </div>
           </div>
           
-          {/* Expert Zone / Quick Actions */}
           <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-red-500 p-6 rounded-md shadow-lg space-y-4 flex flex-col justify-between">
             <div>
               <h3 className="text-lg font-bold text-red-500 uppercase tracking-widest mb-4">EXPERT_TOOLS</h3>

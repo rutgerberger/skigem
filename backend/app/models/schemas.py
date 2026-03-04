@@ -4,15 +4,35 @@ from datetime import date
 
 class ResortBase(BaseModel):
     name: str
-    country: Optional[str] = None
     latitude: float
     longitude: float
+    country: Optional[str] = None
+    continent: Optional[str] = None
+    price: Optional[float] = None
+    season: Optional[str] = None
+    highest_point: Optional[int] = None
+    lowest_point: Optional[int] = None
+    beginner_slopes: Optional[int] = None
+    intermediate_slopes: Optional[int] = None
+    difficult_slopes: Optional[int] = None
+    total_slopes: Optional[int] = None
+    longest_run: Optional[int] = None
+    snow_cannons: Optional[int] = None
+    surface_lifts: Optional[int] = None
+    chair_lifts: Optional[int] = None
+    gondola_lifts: Optional[int] = None
+    total_lifts: Optional[int] = None
+    lift_capacity: Optional[int] = None
+    child_friendly: Optional[bool] = False
+    snowparks: Optional[bool] = False
+    nightskiing: Optional[bool] = False
+    summer_skiing: Optional[bool] = False
+    official_ski_map_url: Optional[str] = None
 
 class ResortResponse(ResortBase):
     id: int
-    # This tells Pydantic it's reading from a SQLAlchemy ORM model, not a standard dict
-    model_config = ConfigDict(from_attributes=True) 
-
+    model_config = ConfigDict(from_attributes=True)
+    
 # --- INPUT MODELS ---
 class SearchCriteria(BaseModel):
     country: str
@@ -78,7 +98,7 @@ class DailySnowfall(BaseModel):
 class WeatherIntel(BaseModel):
     condition: str = Field(..., description="Current weather (e.g., 'Heavy Snow', 'Clear')")
     temp_base_c: float = Field(..., description="Temperature at the base village in Celsius")
-    temp_peak_c: float = Field(..., description="Temperature at the mountain peak in Celsius")
+    temp_peak_c: Optional[float] = Field(..., description="Temperature at the mountain peak in Celsius")
     wind_speed_kmh: float = Field(..., description="Wind speed in km/h")
 
 class SnowIntel(BaseModel):
@@ -100,10 +120,18 @@ class ResortTelemetry(BaseModel):
     
     source_urls: List[str] = Field(default_factory=list, description="List of source URLs scraped for this data")
     last_updated: Optional[str] = Field(None, description="Timestamp of when the data was gathered/cached")
+    official_ski_map_url: Optional[str] = None
 
-# Chalet Response (Needed for nested queries)
-class ChaletResponse(Chalet):
+class ChaletResponse(BaseModel):
     id: int
+    chalet_name: Optional[str] = None
+    resort_name: Optional[str] = None
+    village: Optional[str] = None
+    url: Optional[str] = None
+    image_url: Optional[str] = None
+    price_per_night: Optional[float] = None
+    distance_to_lift_m: Optional[int] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 # Schema for creating/adding a single leg to a trip
@@ -148,5 +176,25 @@ class TripResponse(BaseModel):
     
     # List of all stops on the trip
     legs: List[TripLegResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# SAVED RESORT & USER RESPONSE MODELS
+# ==========================================
+
+class UserResortAction(BaseModel):
+    """Payload for saving or removing a resort from a user's list"""
+    user_id: int
+    resort_id: int
+
+class UserResponse(BaseModel):
+    """Returns the user profile along with their saved items"""
+    id: int
+    personality_summary: Optional[str] = None
+    
+    # Nested lists showing what the user has saved
+    saved_chalets: List[ChaletResponse] = []
+    saved_resorts: List[ResortResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

@@ -1,19 +1,60 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, JSON, DateTime, Date
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, JSON, DateTime, Date, Boolean, Table
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
+
+# ==========================================
+# NEW: ASSOCIATION TABLE
+# ==========================================
+# This bridges Users and Resorts for the "Saved Resorts" feature.
+# Using a composite primary key ensures a user can only save a resort once.
+user_saved_resorts = Table(
+    "user_saved_resorts",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("resort_id", Integer, ForeignKey("resorts.id", ondelete="CASCADE"), primary_key=True)
+)
 
 class Resort(Base):
     __tablename__ = "resorts"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
-    country = Column(String, index=True, nullable=True)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
+    country = Column(String, index=True, nullable=True)
+    
+    # --- SKI MAP TRACKING ---
+    official_ski_map_url = Column(String, nullable=True)
+    ski_map_updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    # --- CSV DATA COLUMNS ---
+    continent = Column(String, nullable=True)
+    price = Column(Float, nullable=True)
+    season = Column(String, nullable=True)
+    highest_point = Column(Integer, nullable=True)
+    lowest_point = Column(Integer, nullable=True)
+    beginner_slopes = Column(Integer, nullable=True)
+    intermediate_slopes = Column(Integer, nullable=True)
+    difficult_slopes = Column(Integer, nullable=True)
+    total_slopes = Column(Integer, nullable=True)
+    longest_run = Column(Integer, nullable=True)
+    snow_cannons = Column(Integer, nullable=True)
+    surface_lifts = Column(Integer, nullable=True)
+    chair_lifts = Column(Integer, nullable=True)
+    gondola_lifts = Column(Integer, nullable=True)
+    total_lifts = Column(Integer, nullable=True)
+    lift_capacity = Column(Integer, nullable=True)
+    
+    # Booleans for amenities (Mapped from Yes/No)
+    child_friendly = Column(Boolean, default=False)
+    snowparks = Column(Boolean, default=False)
+    nightskiing = Column(Boolean, default=False)
+    summer_skiing = Column(Boolean, default=False)
 
     # Relationships
     trip_legs = relationship("TripLeg", back_populates="resort")
+    saved_by_users = relationship("User", secondary=user_saved_resorts, back_populates="saved_resorts") # NEW
 
 class User(Base):
     __tablename__ = "users"
@@ -23,12 +64,13 @@ class User(Base):
     
     # Relationships
     saved_chalets = relationship("Chalet", back_populates="owner")
+    saved_resorts = relationship("Resort", secondary=user_saved_resorts, back_populates="saved_by_users") # NEW
     interactions = relationship("InteractionLog", back_populates="user")
-    trips = relationship("Trip", back_populates="owner") # NEW
+    trips = relationship("Trip", back_populates="owner")
 
 # Renamed from SavedChalet to Chalet for broader use
 class Chalet(Base):
-    __tablename__ = "chalets" # Changed table name
+    __tablename__ = "chalets"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Nullable if just scraped, not saved
@@ -42,47 +84,40 @@ class Chalet(Base):
     
     # Relationships
     owner = relationship("User", back_populates="saved_chalets")
-    trip_legs = relationship("TripLeg", back_populates="chalet") # NEW
+    trip_legs = relationship("TripLeg", back_populates="chalet")
 
 # ==========================================
-# NEW: TRIP PLANNER MODELS
+# TRIP PLANNER MODELS
 # ==========================================
 
 class Trip(Base):
     __tablename__ = "trips"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Assuming guest mode initially
-    name = Column(String, nullable=False) # e.g., "Alps Mega Tour 2026"
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    name = Column(String, nullable=False)
     start_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)
-    status = Column(String, default="DRAFT") # DRAFT, BOOKED, COMPLETED
+    status = Column(String, default="DRAFT")
     
-    # Automatically tracks when the record was created/updated
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships
     owner = relationship("User", back_populates="trips")
-    legs = relationship("TripLeg", back_populates="trip", cascade="all, delete-orphan") # If trip deleted, delete legs
+    legs = relationship("TripLeg", back_populates="trip", cascade="all, delete-orphan")
 
 class TripLeg(Base):
-    """
-    Junction table. A trip can have multiple stops (legs). 
-    Each leg connects the Trip to a Resort, and optionally, a Chalet.
-    """
     __tablename__ = "trip_legs"
 
     id = Column(Integer, primary_key=True, index=True)
     trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
     resort_id = Column(Integer, ForeignKey("resorts.id"), nullable=False)
-    chalet_id = Column(Integer, ForeignKey("chalets.id"), nullable=True) # They might plan a resort without a booked chalet yet
+    chalet_id = Column(Integer, ForeignKey("chalets.id"), nullable=True)
     
     arrival_date = Column(Date, nullable=True)
     departure_date = Column(Date, nullable=True)
-    order_index = Column(Integer, default=0) # e.g., 1st stop, 2nd stop
+    order_index = Column(Integer, default=0)
 
-    # Relationships
     trip = relationship("Trip", back_populates="legs")
     resort = relationship("Resort", back_populates="trip_legs")
     chalet = relationship("Chalet", back_populates="trip_legs")
@@ -110,4 +145,11 @@ class ResortTelemetryCache(Base):
     telemetry_data = Column(JSON, nullable=False)
     source_urls = Column(JSON, nullable=False)
     
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class TrendingCache(Base):
+    __tablename__ = "trending_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data = Column(JSON, nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

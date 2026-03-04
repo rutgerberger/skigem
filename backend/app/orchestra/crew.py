@@ -12,10 +12,11 @@ from app.orchestra.agents.chalet_hunter import chalet_hunter_node
 from app.orchestra.agents.evaluator import evaluator_node
 from app.orchestra.tools.sheets_sync import append_to_sheets
 from app.orchestra.tools.web_scraper import scrape_website
+from app.orchestra.agents.trend_analyzer import trend_analyzer_node
 
 load_dotenv()
 
-llm = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.2, api_key=os.environ.get("GROQ_API_KEY"))
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2, api_key=os.environ.get("GROQ_API_KEY"))
 
 @tool("web_search")
 def web_search(query: str) -> str:
@@ -72,6 +73,34 @@ hunter_workflow.add_edge("sync", END)
 
 phase_b_graph = hunter_workflow.compile()
 
+# ==========================================
+# PHASE C: TRENDING NETWORK GRAPH
+# ==========================================
+class TrendState(TypedDict):
+    trending_resorts: dict
+
+trend_workflow = StateGraph(TrendState)
+trend_workflow.add_node("trend_analyzer", lambda state: trend_analyzer_node(state, llm, [web_search]))
+trend_workflow.add_edge(START, "trend_analyzer")
+trend_workflow.add_edge("trend_analyzer", END)
+
+phase_c_graph = trend_workflow.compile()
+
+def run_trend_analysis() -> dict:
+    """Triggered twice a day or manually to find hot resorts."""
+    print("\n" + "="*50 + "\n🔥 STARTING PHASE C: NETWORK TREND ANALYSIS\n" + "="*50)
+    try:
+        result = phase_c_graph.invoke({})
+        return result.get("trending_resorts", {"resorts": []})
+    except Exception as e:
+        print(f"\n🚨 [SYSTEM FATAL] Trend analysis failed: {e}")
+        # Return fallback data if the API fails
+        return {
+            "resorts": [
+                { "name": "Verbier", "metric": "OFFLINE", "condition": "AWAITING DATA", "color": "text-slate-400", "border": "border-slate-500" }
+            ]
+        }
+    
 # ==========================================
 # EXPORTED RUNNER FUNCTIONS FOR FASTAPI
 # ==========================================
