@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 # Import the modular routers
-from app.routers import users, trips, search, telemetry
+from app.routers import users, trips, search, telemetry, intel
 
 router = APIRouter()
 
@@ -10,3 +10,4 @@ router.include_router(users.router)
 router.include_router(trips.router)
 router.include_router(search.router)
 router.include_router(telemetry.router)
+router.include_router(intel.router)

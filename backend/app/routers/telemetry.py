@@ -8,9 +8,40 @@ from sqlalchemy.orm import Session
 from app.models.schemas import ResortTelemetry
 from app.models.domain import Resort, ResortTelemetryCache
 from app.database import get_db
-from app.orchestra.agents.telemetry_officer import gather_resort_telemetry, fetch_official_skimap
+from app.orchestra.agents.telemetry_officer import gather_resort_telemetry, fetch_official_skimap, generate_resort_profile
 
 router = APIRouter(tags=["Telemetry"])
+
+@router.get("/resorts/{resort_id}/profile")
+def get_or_generate_resort_profile(resort_id: int, force: bool = False, db: Session = Depends(get_db)):
+    resort = db.query(Resort).filter(Resort.id == resort_id).first()
+    if not resort:
+        raise HTTPException(status_code=404, detail="Resort not found.")
+
+    # Return existing profile if it exists and we aren't forcing a refresh
+    if not force and resort.description_overview:
+        return {
+            "overview": resort.description_overview,
+            "slopes": resort.description_slopes,
+            "atmosphere": resort.description_atmosphere,
+            "official_url": resort.official_website_url
+        }
+
+    # Generate new profile
+    profile_data = generate_resort_profile(resort.name)
+    
+    if not profile_data:
+        raise HTTPException(status_code=500, detail="Failed to compile briefing.")
+
+    # Save permanently to DB
+    resort.description_overview = profile_data["overview"]
+    resort.description_slopes = profile_data["slopes"]
+    resort.description_atmosphere = profile_data["atmosphere"]
+    resort.official_website_url = profile_data["official_url"]
+    
+    db.commit()
+    
+    return profile_data
 
 def get_current_winter_season_start() -> datetime:
     """
@@ -22,7 +53,7 @@ def get_current_winter_season_start() -> datetime:
     start_year = now.year if now.month >= 11 else now.year - 1
     return datetime(start_year, 11, 1, tzinfo=timezone.utc)
 
-@router.get("/resort/{resort_slug}/telemetry", response_model=ResortTelemetry)
+@router.get("/resorts/{resort_slug}/telemetry", response_model=ResortTelemetry)
 async def get_resort_telemetry(resort_slug: str, db: Session = Depends(get_db)):
     resort_record = db.query(Resort).filter(Resort.name.ilike(f"%{resort_slug}%")).first()
     

@@ -2,6 +2,12 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import date
 
+class ResortProfileSchema(BaseModel):
+    overview: str = Field(description="Generic overview, highlights, and connected villages.")
+    slopes: str = Field(description="Types of slopes, sun exposure, and snow sureness.")
+    atmosphere: str = Field(description="Vibe, target audience, family-friendliness, or party/off-piste reputation.")
+    official_url: Optional[str] = Field(description="The official website URL of the resort, if found.")
+
 class ResortBase(BaseModel):
     name: str
     latitude: float
@@ -28,6 +34,10 @@ class ResortBase(BaseModel):
     nightskiing: Optional[bool] = False
     summer_skiing: Optional[bool] = False
     official_ski_map_url: Optional[str] = None
+    description_overview: Optional[str] = None
+    description_slopes: Optional[str] = None
+    description_atmosphere: Optional[str] = None
+    official_website_url: Optional[str] = None
 
 class ResortResponse(ResortBase):
     id: int
@@ -134,6 +144,53 @@ class ChaletResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+# ==========================================
+# SAVED RESORT & USER RESPONSE MODELS
+# ==========================================
+
+class UserResortAction(BaseModel):
+    """Payload for saving or removing a resort from a user's list"""
+    user_id: int
+    resort_id: int
+
+class UserResponse(BaseModel):
+    """Returns the user profile along with their saved items"""
+    id: int
+    personality_summary: Optional[str] = None
+    
+    # Nested lists showing what the user has saved
+    saved_chalets: List[ChaletResponse] = []
+    saved_resorts: List[ResortResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+class BucketListItemResponse(BaseModel):
+    id: int
+    name: str
+    logo: str
+    description: Optional[str] = None
+    url: Optional[str] = None
+    category: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class BucketListItem(BaseModel):
+    category: str = Field(description="Must be: 'PISTE', 'OFF-PISTE', 'DINING', 'APRES', 'PARK'")
+    title: str = Field(description="The specific name of the run, bar, or restaurant")
+    description: str = Field(description="Why it's legendary and must be done.")
+
+class ResortBucketList(BaseModel):
+    resort_name: str
+    items: List[BucketListItem]
+
+class NewsSelection(BaseModel):
+    article_id: int = Field(description="The exact ID of the article from the provided list")
+    severity: str = Field(description="Must be one of: 'CRITICAL', 'WARNING', 'INFO', 'GOOD'")
+
+class FilteredNews(BaseModel):
+    selections: List[NewsSelection]
+
+
 # Schema for creating/adding a single leg to a trip
 class TripLegCreate(BaseModel):
     resort_id: int
@@ -155,8 +212,10 @@ class TripLegResponse(BaseModel):
     # Nested Objects
     resort: ResortResponse
     chalet: Optional[ChaletResponse] = None
-
+    bucket_items: List[BucketListItemResponse]
     model_config = ConfigDict(from_attributes=True)
+
+
 
 # Schema for creating a brand new Trip
 class TripCreate(BaseModel):
@@ -176,25 +235,5 @@ class TripResponse(BaseModel):
     
     # List of all stops on the trip
     legs: List[TripLegResponse] = []
-
-    model_config = ConfigDict(from_attributes=True)
-
-# ==========================================
-# SAVED RESORT & USER RESPONSE MODELS
-# ==========================================
-
-class UserResortAction(BaseModel):
-    """Payload for saving or removing a resort from a user's list"""
-    user_id: int
-    resort_id: int
-
-class UserResponse(BaseModel):
-    """Returns the user profile along with their saved items"""
-    id: int
-    personality_summary: Optional[str] = None
-    
-    # Nested lists showing what the user has saved
-    saved_chalets: List[ChaletResponse] = []
-    saved_resorts: List[ResortResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

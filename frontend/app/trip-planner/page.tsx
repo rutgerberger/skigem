@@ -8,21 +8,28 @@ import DataSearchModule from "../components/DataSearchModule";
 import ResortsBriefing from "./ResortsBriefing"; 
 import ChaletHunters from "./ChaletHunters";
 
+// --- NEW IMPORT ---
+import MissionLaunchpad from "../components/MissionLaunchpad";
+
 function TripPlannerOrchestrator() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   // URL-driven state logic
+  const tripId = searchParams.get("trip_id");
   const targetResort = searchParams.get("target_resort");
   const phaseParam = searchParams.get("phase");
 
-  // Determine current phase
-  let currentPhase = "INIT";
-  if (phaseParam === "chalets" || targetResort) currentPhase = "CHALETS";
-  else if (phaseParam === "resorts") currentPhase = "RESORTS";
+  // Determine current phase based on trip_id existence
+  let currentPhase = "LAUNCH";
+  if (tripId) {
+    if (phaseParam === "chalets" || targetResort) currentPhase = "CHALETS";
+    else if (phaseParam === "resorts") currentPhase = "RESORTS";
+    else currentPhase = "INIT";
+  }
 
-  // Navigation Handlers
-  const jumpToInit = () => router.push('/trip-planner');
+  // Navigation Handlers (Preserving the trip_id when jumping around)
+  const jumpToInit = () => router.push(`/trip-planner?trip_id=${tripId}`);
   const jumpToResorts = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("target_resort"); // Drop the exact resort
@@ -30,9 +37,13 @@ function TripPlannerOrchestrator() {
     router.push(`/trip-planner?${params.toString()}`);
   };
 
+  // --- RENDER PHASE 0: THE LAUNCHPAD ---
+  if (currentPhase === "LAUNCH") {
+    return <MissionLaunchpad />;
+  }
+
+  // --- RENDER PHASES 1-3: THE ORCHESTRATOR ---
   return (
-    // ADDED: font-mono selection:bg-cyan-500 selection:text-white to match the system vibe
-    //<div className="min-h-screen bg-slate-950 flex flex-col bg-[url('https://images.unsplash.com/photo-1495619744764-2cc11fcbe5f0?q=80&w=1732&auto=format&fit=crop')] bg-cover bg-center bg-fixed font-mono selection:bg-cyan-500 selection:text-white">
     <div className="min-h-screen bg-slate-950 flex flex-col bg-[url('/resort_background_img.png')] bg-cover bg-center bg-fixed font-mono selection:bg-cyan-500 selection:text-white">
       
       {/* MISSION STEPPER NAV */}
@@ -59,7 +70,7 @@ function TripPlannerOrchestrator() {
       <div className="flex-1 relative">
         {currentPhase === "INIT" && (
           <div className="max-w-4xl mx-auto px-6 py-12 animate-fade-in-down">
-            {/* ADD defaultExpanded={true} HERE */}
+            {/* The tripId can now be read by DataSearchModule if you need it to attach things! */}
             <DataSearchModule defaultExpanded={true} />
           </div>
         )}

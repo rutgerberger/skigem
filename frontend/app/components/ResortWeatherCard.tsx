@@ -43,7 +43,7 @@ export default function ResortWeatherCard({ name, lat, lon, alt, href, aiData, h
         let finalLon = lon;
         let finalAlt = alt || 2000;
 
-        // 1. If coordinates weren't passed (e.g. AI generated a name), Geocode it.
+        // 1. Geocode if no coordinates passed
         if (!finalLat || !finalLon) {
           const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&format=json`);
           const geoData = await geoRes.json();
@@ -57,23 +57,31 @@ export default function ResortWeatherCard({ name, lat, lon, alt, href, aiData, h
           }
         }
 
-        // 2. Fetch Weather & Snow History
-        const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${finalLat}&longitude=${finalLon}&elevation=${finalAlt}&current=temperature_2m,weather_code&daily=snowfall_sum&past_days=28&forecast_days=1&timezone=auto`;
-        const mRes = await fetch(meteoUrl);
-        const mData = await mRes.json();
+        // 2. Extrapolate Valley and Peak based on the single geocoded altitude
+        const valleyAlt = Math.max(finalAlt - 800, 500); 
+        const peakAlt = finalAlt + 600; 
 
-        const wCode = mData.current?.weather_code || 0;
+        // 3. Fetch Dual-Elevation Weather & Snow Depth
+        const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${finalLat},${finalLat}&longitude=${finalLon},${finalLon}&elevation=${valleyAlt},${peakAlt}&current=temperature_2m,weather_code,snow_depth&daily=snowfall_sum&past_days=28&forecast_days=1&timezone=auto`;
+        const mRes = await fetch(meteoUrl);
+        const mDataArray = await mRes.json();
+
+        // Index 0 is Valley, Index 1 is Peak
+        const valleyData = mDataArray[0];
+        const peakData = mDataArray[1];
+
+        const wCode = valleyData.current?.weather_code || 0;
         const statusInfo = getWeatherStatus(wCode);
         const isSnowing = [71, 73, 75, 77, 85, 86].includes(wCode);
 
         let lastSnowAmount = 0;
         let lastSnowDate = "NO RECENT SNOW";
         
-        if (mData.daily?.snowfall_sum) {
+        if (valleyData.daily?.snowfall_sum) {
           for (let i = 28; i >= 0; i--) {
-            if (mData.daily.snowfall_sum[i] > 0.5) {
-              lastSnowAmount = Math.round(mData.daily.snowfall_sum[i]);
-              const d = new Date(mData.daily.time[i]);
+            if (valleyData.daily.snowfall_sum[i] > 0.5) {
+              lastSnowAmount = Math.round(valleyData.daily.snowfall_sum[i]);
+              const d = new Date(valleyData.daily.time[i]);
               lastSnowDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
               break;
             }
@@ -82,12 +90,14 @@ export default function ResortWeatherCard({ name, lat, lon, alt, href, aiData, h
 
         if (isMounted) {
           setWeather({
-            temp: Math.round(mData.current?.temperature_2m || 0),
+            temp: Math.round(valleyData.current?.temperature_2m || 0),
             isSnowing,
             lastSnowDate,
             lastSnowAmount,
             weatherLabel: statusInfo.label,
-            weatherIcon: statusInfo.icon
+            weatherIcon: statusInfo.icon,
+            valleySnow: Math.round((valleyData.current?.snow_depth || 0) * 100), // m to cm
+            peakSnow: Math.round((peakData.current?.snow_depth || 0) * 100)      // m to cm
           });
           setLoading(false);
         }
@@ -100,7 +110,6 @@ export default function ResortWeatherCard({ name, lat, lon, alt, href, aiData, h
     return () => { isMounted = false; };
   }, [name, lat, lon, alt]);
 
-  // Determine border class (AI passes its own, otherwise use default)
   const borderClass = aiData ? `hover:${aiData.border}/50` : hoverBorderClass;
 
   return (
@@ -141,19 +150,27 @@ export default function ResortWeatherCard({ name, lat, lon, alt, href, aiData, h
         )}
       </div>
 
-      {/* Bottom Row: Snow Telemetry */}
+      {/* Bottom Row: Stacked Telemetry (Base/Peak + Last Snow) */}
       {weather ? (
-        <div className="flex justify-between items-center mt-2 border-t border-slate-800/50 pt-2 text-[9px] tracking-widest text-slate-400 uppercase font-mono">
-          <span className="truncate pr-2">
+        <div className="mt-2 border-t border-slate-800/50 pt-2 flex flex-col gap-1 text-[9px] tracking-widest uppercase font-mono">
+          <div className="flex justify-between items-center text-slate-400">
+            <div className="flex gap-2 items-center">
+              <span>BASE: <span className="text-white">{weather.valleySnow}cm</span></span>
+              <span className="text-slate-700">|</span>
+              <span>PEAK: <span className="text-white">{weather.peakSnow}cm</span></span>
+            </div>
+            <span className="shrink-0">
+              {weather.isSnowing 
+                ? <span className="text-cyan-400 font-bold animate-pulse">SNOWING</span> 
+                : <span className="text-slate-600">CLEAR</span>}
+            </span>
+          </div>
+          
+          <div className="text-slate-500 text-[8px] mt-0.5">
             L_SNOW: {weather.lastSnowAmount && weather.lastSnowAmount > 0 
-              ? <span className="text-white">{weather.lastSnowAmount}cm <span className="text-slate-500">({weather.lastSnowDate})</span></span> 
+              ? <span className="text-slate-300">{weather.lastSnowAmount}cm <span className="text-slate-600">({weather.lastSnowDate})</span></span> 
               : <span className="text-slate-600">{weather.lastSnowDate}</span>}
-          </span>
-          <span className="shrink-0">
-            ACTIVE: {weather.isSnowing 
-              ? <span className="text-cyan-400 font-bold animate-pulse">YES</span> 
-              : <span className="text-slate-600">NO</span>}
-          </span>
+          </div>
         </div>
       ) : loading ? (
         <div className="mt-2 border-t border-slate-800/50 pt-2 text-[9px] text-slate-600 animate-pulse tracking-widest uppercase">

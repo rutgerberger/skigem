@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSearch } from "../../context/SearchContext";
-import MapOverlayModule from "../../components/MapOverlayModule"; // Adjust path if needed
+import MapOverlayModule from "../../components/MapOverlayModule"; 
 import CurrentConditions from "../../components/CurrentConditions";
 import Forecast72h from "../../components/Forecast72h";
 import PrecipitationArchive from "../../components/PrecipitationArchive";
+import ResortProfileWidget from "../../components/ResortProfileWidget";
 
 // --- MAIN PAGE COMPONENT ---
 export default function TelemetryDashboard() {
@@ -21,6 +22,12 @@ export default function TelemetryDashboard() {
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [mapCoords, setMapCoords] = useState<{lat: number, lon: number}>({ lat: 47.1296, lon: 10.2681 });
+
+  // --- NEW: MISSION DEPLOYMENT STATE ---
+  const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
+  const [userTrips, setUserTrips] = useState<any[]>([]);
+  const [newMissionName, setNewMissionName] = useState("");
+  const [isDeploying, setIsDeploying] = useState(false);
 
   useEffect(() => {
     if (!rawResortParam || rawResortParam === "undefined") {
@@ -56,9 +63,6 @@ export default function TelemetryDashboard() {
         const baseAlt = matchedResort.lowest_point || 1000;
         const peakAlt = matchedResort.highest_point || 2500;
 
-        // HIGH PRECISION UPLINK: We query the exact same coordinate twice, but feed it the two different elevations.
-        // Open-Meteo returns an array: [0] is Valley data, [1] is Peak data based on their meteorological models.
-        //const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat},${targetLat}&longitude=${targetLon},${targetLon}&elevation=${baseAlt},${peakAlt}&current=temperature_2m,wind_speed_10m,snow_depth,weather_code&hourly=temperature_2m,snow_depth,freezing_level_height,snowfall,rain,cloud_cover,wind_speed_10m&forecast_days=3&timezone=auto`;
         const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat},${targetLat}&longitude=${targetLon},${targetLon}&elevation=${baseAlt},${peakAlt}&current=temperature_2m,wind_speed_10m,snow_depth,weather_code&hourly=temperature_2m,snow_depth,freezing_level_height,snowfall,rain,cloud_cover,wind_speed_10m&daily=snowfall_sum&past_days=28&forecast_days=3&timezone=auto`;
         const res = await fetch(meteoUrl);
         if (!res.ok) throw new Error("PUBLIC_UPLINK_FAILED: Weather satellite did not respond.");
@@ -78,8 +82,8 @@ export default function TelemetryDashboard() {
           }
           forecast_48h = (daily.snowfall_sum[28] || 0) + (daily.snowfall_sum[29] || 0);
         }
-        // Fetch Telemetry from our backend for Map URL
-        const telemetryRes = await fetch(`http://localhost:8000/api/resort/${encodeURIComponent(matchedResort.name)}/telemetry`);
+        
+        const telemetryRes = await fetch(`http://localhost:8000/api/resorts/${encodeURIComponent(matchedResort.name)}/telemetry`);
         let aiTelemetry: any = {};
         if (telemetryRes.ok) {
            aiTelemetry = await telemetryRes.json();
@@ -98,10 +102,10 @@ export default function TelemetryDashboard() {
             peakTemp: Math.round(peakData.current?.temperature_2m || 0),
             valleyWind: Math.round(valleyData.current?.wind_speed_10m || 0),
             peakWind: Math.round(peakData.current?.wind_speed_10m || 0),
-            valleySnowDepth: Math.round((valleyData.current?.snow_depth || 0) * 100), // m to cm
-            peakSnowDepth: Math.round((peakData.current?.snow_depth || 0) * 100),     // m to cm
+            valleySnowDepth: Math.round((valleyData.current?.snow_depth || 0) * 100), 
+            peakSnowDepth: Math.round((peakData.current?.snow_depth || 0) * 100),    
             freezingLevel: Math.round(currentFreeze),
-            snowLevel: Math.round(currentFreeze - 300), // Meteorological standard: snow is 300m below freezing line
+            snowLevel: Math.round(currentFreeze - 300), 
           },
           forecast_72h: {
             time: valleyData.hourly?.time || [],
@@ -131,6 +135,7 @@ export default function TelemetryDashboard() {
     fetchPublicTelemetry();
   }, [rawResortParam, userId]);
 
+  // --- ACTIONS: SAVE TO ARCHIVE ---
   const handleToggleSave = async () => {
     if (!data?.db_stats?.id || !userId) return;
     setIsSaving(true);
@@ -150,6 +155,63 @@ export default function TelemetryDashboard() {
       console.error("SYS_ERR: Failed to update archives.", err);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // --- ACTIONS: MISSION DEPLOYMENT ---
+  const openMissionModal = async () => {
+    if (!userId) {
+      alert("Must be logged in to deploy missions.");
+      return;
+    }
+    setIsMissionModalOpen(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/trips?user_id=${userId}`);
+      if (res.ok) setUserTrips(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateNewMission = async () => {
+    if (!newMissionName) return;
+    setIsDeploying(true);
+    try {
+      // 1. Create Trip
+      const tripRes = await fetch("http://localhost:8000/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newMissionName, user_id: userId })
+      });
+      const newTrip = await tripRes.json();
+
+      // 2. Add Leg
+      await fetch(`http://localhost:8000/api/trips/${newTrip.id}/legs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resort_id: data.db_stats.id, order_index: 0 })
+      });
+
+      // 3. Jump to Trip Hub
+      router.push(`/my-trips/${newTrip.id}`);
+    } catch (err) {
+      console.error(err);
+      setIsDeploying(false);
+    }
+  };
+
+  const handleAddToExistingMission = async (tripId: number, currentLegCount: number) => {
+    setIsDeploying(true);
+    try {
+      await fetch(`http://localhost:8000/api/trips/${tripId}/legs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resort_id: data.db_stats.id, order_index: currentLegCount })
+      });
+      router.push(`/my-trips/${tripId}`);
+    } catch (err) {
+      console.error(err);
+      setIsDeploying(false);
     }
   };
 
@@ -173,7 +235,7 @@ export default function TelemetryDashboard() {
     </div>
   );
 
-  const totalKm = data.db_stats.total_slopes || 1; // prevent division by zero
+  const totalKm = data.db_stats.total_slopes || 1; 
   const pBeginner = ((data.db_stats.beginner_slopes || 0) / totalKm) * 100;
   const pIntermediate = ((data.db_stats.intermediate_slopes || 0) / totalKm) * 100;
   const pExpert = ((data.db_stats.difficult_slopes || 0) / totalKm) * 100;
@@ -196,19 +258,29 @@ export default function TelemetryDashboard() {
           </div>
           
           <div className="text-left md:text-right flex flex-col items-start md:items-end gap-2">
-             <button 
-               onClick={handleToggleSave}
-               disabled={isSaving || !userId}
-               className={`text-[10px] px-3 py-1.5 border font-bold tracking-widest uppercase transition-all flex items-center gap-2 ${
-                 isSaved 
-                  ? 'bg-pink-900/40 text-pink-400 border-pink-500/50 hover:bg-pink-900/80 hover:text-pink-300' 
-                  : 'bg-slate-900/60 text-cyan-500 border-cyan-500/50 hover:bg-cyan-900/80 hover:text-cyan-300'
-               } ${isSaving || !userId ? 'opacity-50 cursor-not-allowed' : ''}`}
-             >
-               {isSaving ? "SYNCING..." : isSaved ? "[-] REMOVE_FROM_ARCHIVE" : "[+] ADD_TO_ARCHIVE"}
-             </button>
+             <div className="flex gap-2">
+               <button 
+                 onClick={handleToggleSave}
+                 disabled={isSaving || !userId}
+                 className={`text-[10px] px-3 py-1.5 border font-bold tracking-widest uppercase transition-all flex items-center gap-2 ${
+                   isSaved 
+                    ? 'bg-pink-900/40 text-pink-400 border-pink-500/50 hover:bg-pink-900/80 hover:text-pink-300' 
+                    : 'bg-slate-900/60 text-cyan-500 border-cyan-500/50 hover:bg-cyan-900/80 hover:text-cyan-300'
+                 } ${isSaving || !userId ? 'opacity-50 cursor-not-allowed' : ''}`}
+               >
+                 {isSaving ? "SYNCING..." : isSaved ? "[-] REMOVE_FROM_ARCHIVE" : "[+] ADD_TO_ARCHIVE"}
+               </button>
 
-            <div className="flex flex-col items-start md:items-end">
+               {/* --- THE NEW DEPLOY BUTTON --- */}
+               <button 
+                 onClick={openMissionModal}
+                 className="text-[10px] px-3 py-1.5 border border-purple-500 bg-purple-600 text-white font-bold tracking-widest uppercase hover:bg-purple-500 transition-all shadow-[0_0_10px_rgba(147,51,234,0.4)]"
+               >
+                 [+] DEPLOY_TO_MISSION
+               </button>
+             </div>
+
+            <div className="flex flex-col items-start md:items-end mt-2">
               <span className="text-[10px] text-slate-500 tracking-widest uppercase">SYS_STATUS // OPEN_API_LIVE</span>
               <span className="text-cyan-400 font-bold tracking-widest uppercase text-xs mt-1">DATA_AGE: &lt; 1 MIN</span>
             </div>
@@ -222,46 +294,8 @@ export default function TelemetryDashboard() {
           {/* ============================== */}
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
             
-            {/* MOD 02: TERRAIN PROFILE */}
-            <div className="bg-slate-900/80 border border-slate-800 p-6">
-              <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase border-b border-slate-800 pb-2 mb-6 flex justify-between">
-                <span>MOD_02 // TERRAIN_PROFILE</span>
-                <span className="text-white">{data.db_stats.total_slopes} <span className="text-slate-500">TOTAL KM</span></span>
-              </h2>
-              
-              <div className="flex justify-between items-end mb-6">
-                <div>
-                  <span className="block text-[9px] uppercase tracking-widest opacity-80">ELEVATION_DELTA</span>
-                  <span className="text-3xl font-black text-cyan-400">{data.db_stats.lowest_point}M - {data.db_stats.highest_point}M</span>
-                </div>
-              </div>
 
-              {/* Vertical Progress Bars */}
-              <div className="flex items-end justify-around h-32 border-b border-slate-800 pb-2 mt-6">
-                <div className="flex flex-col items-center justify-end h-full w-16 group">
-                  <span className="text-[10px] text-blue-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.beginner_slopes}km</span>
-                  <div className="w-full bg-blue-500 transition-all duration-500" style={{ height: `${pBeginner}%` }}></div>
-                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">BEG</span>
-                </div>
-                
-                <div className="flex flex-col items-center justify-end h-full w-16 group">
-                  <span className="text-[10px] text-red-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.intermediate_slopes}km</span>
-                  <div className="w-full bg-red-500 transition-all duration-500" style={{ height: `${pIntermediate}%` }}></div>
-                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">INT</span>
-                </div>
-
-                <div className="flex flex-col items-center justify-end h-full w-16 group">
-                  <span className="text-[10px] text-slate-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.difficult_slopes}km</span>
-                  <div className="w-full bg-slate-500 transition-all duration-500" style={{ height: `${pExpert}%` }}></div>
-                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">EXP</span>
-                </div>
-              </div>
-              
-              <div className="pt-4 flex justify-between text-[10px] text-slate-500 tracking-widest uppercase">
-                <span>SNOW_CANNONS: {data.db_stats.snow_cannons}</span>
-                <span>SNOWPARK: {data.db_stats.snowparks ? 'YES' : 'NO'}</span>
-              </div>
-            </div>
+            <ResortProfileWidget resortId={data.db_stats.id} resortName={data.resort_name} />
 
             {/* MOD 01: CURRENT CONDITIONS */}
             <CurrentConditions data={data.live_conditions} weatherCode={data.weather_code} />
@@ -349,6 +383,46 @@ export default function TelemetryDashboard() {
               )}
             </div>
 
+            {/* MOD 02: TERRAIN PROFILE */}
+            <div className="bg-slate-900/80 border border-slate-800 p-6">
+              <h2 className="text-cyan-600 text-xs font-bold tracking-widest uppercase border-b border-slate-800 pb-2 mb-6 flex justify-between">
+                <span>MOD_02 // TERRAIN_PROFILE</span>
+                <span className="text-white">{data.db_stats.total_slopes} <span className="text-slate-500">TOTAL KM</span></span>
+              </h2>
+              
+              <div className="flex justify-between items-end mb-6">
+                <div>
+                  <span className="block text-[9px] uppercase tracking-widest opacity-80">ELEVATION_DELTA</span>
+                  <span className="text-3xl font-black text-cyan-400">{data.db_stats.lowest_point}M - {data.db_stats.highest_point}M</span>
+                </div>
+              </div>
+              {/* Vertical Progress Bars */}
+              <div className="flex items-end justify-around h-32 border-b border-slate-800 pb-2 mt-6">
+                <div className="flex flex-col items-center justify-end h-full w-16 group">
+                  <span className="text-[10px] text-blue-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.beginner_slopes}km</span>
+                  <div className="w-full bg-blue-500 transition-all duration-500" style={{ height: `${pBeginner}%` }}></div>
+                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">BEG</span>
+                </div>
+                
+                <div className="flex flex-col items-center justify-end h-full w-16 group">
+                  <span className="text-[10px] text-red-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.intermediate_slopes}km</span>
+                  <div className="w-full bg-red-500 transition-all duration-500" style={{ height: `${pIntermediate}%` }}></div>
+                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">INT</span>
+                </div>
+
+                <div className="flex flex-col items-center justify-end h-full w-16 group">
+                  <span className="text-[10px] text-slate-400 mb-2 group-hover:opacity-100 transition-opacity">{data.db_stats.difficult_slopes}km</span>
+                  <div className="w-full bg-slate-500 transition-all duration-500" style={{ height: `${pExpert}%` }}></div>
+                  <span className="text-[9px] tracking-widest uppercase mt-2 text-slate-400">EXP</span>
+                </div>
+              </div>
+              
+              <div className="pt-4 flex justify-between text-[10px] text-slate-500 tracking-widest uppercase">
+                <span>SNOW_CANNONS: {data.db_stats.snow_cannons}</span>
+                <span>SNOWPARK: {data.db_stats.snowparks ? 'YES' : 'NO'}</span>
+              </div>
+            </div>
+            
             {/* MOD 07: SATELLITE MAP OVERLAY */}
             <div className="h-[1000px]">
             <MapOverlayModule lat={mapCoords.lat} lon={mapCoords.lon} fullHeight={true} />
@@ -356,6 +430,72 @@ export default function TelemetryDashboard() {
           </div>
         </div>
       </div>
+
+      {/* --- NEW: MISSION DEPLOYMENT MODAL --- */}
+      {isMissionModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border-2 border-purple-500 p-6 rounded-lg shadow-[0_0_30px_rgba(147,51,234,0.3)] max-w-md w-full relative">
+            <button onClick={() => setIsMissionModalOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">X</button>
+            
+            <h2 className="text-purple-400 font-bold tracking-widest border-b border-purple-500/30 pb-2 mb-4">DEPLOY TARGET TO MISSION</h2>
+            
+            {isDeploying ? (
+              <div className="text-center text-purple-500/50 text-xs py-8 animate-pulse tracking-widest">TRANSMITTING_COORDINATES...</div>
+            ) : (
+              <div className="space-y-6">
+                
+                {/* CREATE NEW MISSION */}
+                <div>
+                  <p className="text-[10px] text-slate-500 mb-2">INITIALIZE_NEW_MISSION</p>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={newMissionName} 
+                      onChange={e=>setNewMissionName(e.target.value)} 
+                      placeholder="Codename (e.g. Operation Powder)" 
+                      className="flex-1 bg-slate-950 border border-slate-700 p-2 text-xs text-white focus:border-purple-500 outline-none" 
+                    />
+                    <button 
+                      onClick={handleCreateNewMission} 
+                      disabled={!newMissionName} 
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-2 text-[10px] disabled:bg-slate-800 disabled:text-slate-500 transition-colors"
+                    >
+                      CREATE
+                    </button>
+                  </div>
+                </div>
+
+                {/* ADD TO EXISTING MISSION */}
+                <div className="border-t border-slate-800 pt-4">
+                  <p className="text-[10px] text-slate-500 mb-2">APPEND_TO_ACTIVE_MISSION</p>
+                  {userTrips.length === 0 ? (
+                    <div className="text-xs text-slate-600 border border-slate-800 p-2 text-center">NO_ACTIVE_MISSIONS_FOUND</div>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar border border-slate-800">
+                      {userTrips.map(trip => (
+                        <div key={trip.id} className="flex justify-between items-center bg-slate-950 p-2 border-b border-slate-800 last:border-0 hover:bg-purple-900/20 group">
+                          <div>
+                            <p className="text-xs text-slate-300 font-bold uppercase">{trip.name}</p>
+                            <p className="text-[9px] text-slate-500">{trip.legs?.length || 0} Targets Assigned</p>
+                          </div>
+                          <button 
+                            onClick={() => handleAddToExistingMission(trip.id, trip.legs?.length || 0)} 
+                            className="text-[9px] border border-purple-900 text-purple-400 group-hover:bg-purple-600 group-hover:text-white px-3 py-1 font-bold transition-colors"
+                          >
+                            + APPEND
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

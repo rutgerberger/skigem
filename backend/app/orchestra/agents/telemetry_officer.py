@@ -6,6 +6,50 @@ from app.models.schemas import ResortTelemetry
 from app.orchestra.tools.search_api import search_tool  # Your existing search tool
 from bs4 import BeautifulSoup
 import re
+from app.models.schemas import ResortProfileSchema
+
+def generate_resort_profile(resort_name: str) -> dict:
+    print(f"🕵️ [Intel Officer] Drafting comprehensive target briefing for: {resort_name}")
+
+    try:
+        clean_name = resort_name.split('-')[0].strip()
+        search_query = f"{clean_name} ski resort official website overview villages slopes atmosphere"
+        search_results = search_tool.invoke({"query": search_query})
+        
+        raw_context = f"Resort: {clean_name}\nSearch Intel:\n{search_results}"
+
+        llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=0.2, # Slight creativity allowed for writing a nice description
+            api_key=os.environ.get("GROQ_API_KEY")
+        )
+        
+        structured_llm = llm.with_structured_output(ResortProfileSchema)
+        
+        prompt = f"""
+        You are a veteran ski journalist writing a briefing for a tactical ski dashboard.
+        Based on your vast internal knowledge AND the provided search context, write a 3-part profile for the ski resort.
+        Please do not provide general descriptions (e.g. "This is a vibrant ski resort") but focus on what stands out for this exact resort.
+        
+        CRITICAL RULES:
+        1. USE THE PROVIDED TOOL to output the JSON schema. No conversational text.
+        2. 'overview': Describe the main area, key highlights, and specific villages included. (approx 3 sentences).
+        3. 'slopes': Describe the terrain type, sun exposure (e.g., South-facing?), snow reliability/altitude and how suited it is for off-piste. Also show which parts of the resort are suited for which level of skiers (beginner - advanced) (approx 5 sentences).
+        4. 'atmosphere': Describe the vibe. Is it luxury? Family-friendly? Hardcore freeride? Party central? (approx 3 sentences).
+        5. 'official_url': Extract the exact official website URL from the search context, or use your internal knowledge.
+        
+        Context:
+        {raw_context}
+        """
+        
+        result = structured_llm.invoke(prompt)
+        print(f"✅ [Intel Officer] Target briefing compiled.")
+        return result.model_dump()
+
+    except Exception as e:
+        print(f"🚨 [Intel Officer] Profile generation failed: {e}")
+        return None
+    
 def fetch_official_skimap(resort_name: str) -> str | None:
     """
     1. Search Skimap.org HTML to find the Resort ID.
@@ -76,39 +120,57 @@ def fetch_official_skimap(resort_name: str) -> str | None:
         print(f"❌ [Skimap] Scraping pipeline failed: {e}")
         return None
 def gather_resort_telemetry(resort_name: str) -> dict:
-    """
-    Scrapes the web ONLY for live weather, snow depth, and lift status.
-    (Map fetching is now handled purely at the database level).
-    """
     print(f"🛰️ [Telemetry Officer] Initializing scan for: {resort_name}")
 
-    search_query = f"{resort_name} current snow report weather open lifts historical snowfall"
-    search_results = search_tool.invoke({"query": search_query})
-    
-    extracted_urls = re.findall(r"URL: (http[s]?://[^\s]+)", search_results)
-    unique_urls = list(dict.fromkeys(extracted_urls))
-    raw_context = f"Resort: {resort_name}\nSearch Intel:\n{search_results}"
+    try:
+        search_query = f"{resort_name} current snow report weather open lifts historical snowfall"
+        search_results = search_tool.invoke({"query": search_query})
+        
+        extracted_urls = re.findall(r"URL: (http[s]?://[^\s]+)", search_results)
+        unique_urls = list(dict.fromkeys(extracted_urls))
+        raw_context = f"Resort: {resort_name}\nSearch Intel:\n{search_results}"
 
-    llm = ChatGroq(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        temperature=0.1, 
-        api_key=os.environ.get("GROQ_API_KEY")
-    )
-    
-    structured_llm = llm.with_structured_output(ResortTelemetry)
+        llm = ChatGroq(
+            model="llama-3.3-70b-versatile", # <-- UPGRADED FOR STRICT TOOL CALLING
+            temperature=0.0, 
+            api_key=os.environ.get("GROQ_API_KEY")
+        )
+        
+        structured_llm = llm.with_structured_output(ResortTelemetry)
 
-    prompt = f"""
-    You are the Telemetry Officer for a high-tech ski scouting application.
-    Extract the live weather, snow conditions, and lift status...
-    Context:
-    {raw_context}
-    """
+        prompt = f"""
+        You are the Telemetry Officer for a high-tech ski scouting application.
+        Extract the live weather, snow conditions, and lift status.
+        
+        CRITICAL RULES:
+        1. USE THE PROVIDED TOOL: You must invoke the extraction tool to format your response. 
+        2. NO PREAMBLE: Do not write any conversational text, explanations, or step-by-step logic.
+        3. FALLBACKS: If exact numbers are missing, intelligently infer them or use 0.
+        
+        Context:
+        {raw_context}
+        """
 
-    print(f"🧠 [Telemetry Officer] Parsing data streams...")
-    result = structured_llm.invoke(prompt)
-    
-    output_dict = result.model_dump()
-    output_dict["source_urls"] = unique_urls
-    
-    print(f"✅ [Telemetry Officer] Data extracted successfully.")
-    return output_dict
+        print(f"🧠 [Telemetry Officer] Parsing data streams...")
+        result = structured_llm.invoke(prompt)
+        
+        output_dict = result.model_dump()
+        output_dict["source_urls"] = unique_urls
+        
+        print(f"✅ [Telemetry Officer] Data extracted successfully.")
+        return output_dict
+
+    except Exception as e:
+        print(f"🚨 [Telemetry Officer] SYSTEM FAILURE on {resort_name}: {e}")
+        # FOOLPROOF FALLBACK: Returns empty data instead of crashing the server
+        return {
+            "resort_name": resort_name,
+            "weather": {"condition": "NO DATA / AI OFFLINE", "temp_base_c": 0, "temp_peak_c": 0, "wind_speed_kmh": 0},
+            "snow": {"base_depth_cm": 0, "peak_depth_cm": 0, "forecast_next_48h_cm": 0, "historical_4_weeks": []},
+            "open_lifts": 0,
+            "total_lifts": 0,
+            "crowd_expectation": "UNKNOWN",
+            "source_urls": [],
+            "last_updated": None,
+            "official_ski_map_url": None
+        }

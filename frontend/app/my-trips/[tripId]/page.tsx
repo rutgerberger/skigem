@@ -1,3 +1,4 @@
+// --- app/trip-hub/page.tsx (or wherever TripHub lives) ---
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,6 +7,8 @@ import { useSearch } from "../../context/SearchContext";
 
 import MapOverlayModule from "../../components/MapOverlayModule";
 import CurrentConditions from "../../components/CurrentConditions";
+import NewsIntelWidget from "../../components/NewsIntelWidget";
+import BucketListWidget from "../../components/BucketListWidget";
 
 export default function TripHub() {
   const { tripId } = useParams();
@@ -34,9 +37,11 @@ export default function TripHub() {
 
   const fetchTrip = async () => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/trips/${tripId}`);
+      const res = await fetch(`http://127.0.0.1:8000/api/trips/${tripId}`, {
+        cache: "no-store" 
+      });
       if (res.ok) setTrip(await res.json());
-    } catch (err) {
+    }catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
@@ -329,11 +334,11 @@ export default function TripHub() {
         {activeLeg ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-            {/* LEFT COLUMN (8 Columns Wide) - Map & Telemetry Link */}
+            {/* LEFT COLUMN (8 Columns Wide) */}
             <div className="lg:col-span-8 flex flex-col gap-6">
               
-              {/* MAP WIDGET: Swapped fixed height for flexible min-h so it won't overflow */}
-              <div className="flex-1 min-h-[450px] lg:min-h-[550px] flex flex-col relative w-full">
+              {/* MAP WIDGET */}
+              <div className="flex-1 min-h-[300px] max-h-[550px] lg:min-h-[350px] flex flex-col relative w-full">
                 <MapOverlayModule 
                   fullHeight={true} 
                   lat={activeLeg.resort.latitude} 
@@ -345,16 +350,26 @@ export default function TripHub() {
               {/* AI TELEMETRY WIDGET (BRIDGE BACK TO DASHBOARD) */}
               <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-cyan-500 p-6 rounded-md shadow-lg flex items-center justify-center shrink-0">
                 <button 
-                  onClick={() => router.push(`/dashboard/telemetry/${encodeURIComponent(activeLeg.resort.name)}`)} 
+                  onClick={() => router.push(`/resort-center/${encodeURIComponent(activeLeg.resort.name)}`)} 
                   className="text-xl md:text-2xl font-black tracking-widest text-slate-700 hover:text-cyan-400 transition-colors uppercase flex items-center gap-4 group"
                 >
                   OPEN_TELEMETRY_HUB <span className="text-cyan-500 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform">↗</span>
                 </button>
               </div>
 
+              {/* --- NEW: BUCKET LIST MODULE --- */}
+              <BucketListWidget 
+                userId={userId!} 
+                resortId={activeLeg.resort.id} 
+                resortName={activeLeg.resort.name}
+                tripLegId={activeLeg.id}
+                activeItems={activeLeg.bucket_items || []}
+                onUpdate={fetchTrip}
+              />
+
             </div>
 
-            {/* RIGHT COLUMN (4 Columns Wide) - Basecamp, Weather, Avalanche */}
+            {/* RIGHT COLUMN (4 Columns Wide) */}
             <div className="lg:col-span-4 flex flex-col gap-6">
 
               {/* BASECAMP WIDGET */}
@@ -394,7 +409,7 @@ export default function TripHub() {
                 )}
               </div>
 
-              {/* CURRENT CONDITIONS WIDGET: Swapped h-64 to a natural flex setup */}
+              {/* CURRENT CONDITIONS WIDGET */}
               <div className="flex flex-col min-h-[250px] shrink-0">
                 {liveWeather ? (
                   <CurrentConditions data={liveWeather} weatherCode={weatherCode} />
@@ -420,6 +435,9 @@ export default function TripHub() {
                   ))}
                 </div>
               </div>
+
+              {/* --- NEW: NEWS INTELLIGENCE WIDGET --- */}
+              <NewsIntelWidget resortName={activeLeg.resort.name} />
 
             </div>
           </div>

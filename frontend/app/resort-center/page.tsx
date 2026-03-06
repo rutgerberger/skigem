@@ -4,6 +4,7 @@ import Link from "next/link";
 import MapOverlayModule from "../components/MapOverlayModule";
 import MyResortsModule from "../components/MyResortsModule";
 import ResortWeatherCard from "../components/ResortWeatherCard";
+import NewsIntelWidget from "../components/NewsIntelWidget"; // <-- ADDED IMPORT
 import { useSearch } from "../context/SearchContext";
 import { useEffect, useState } from "react";
 
@@ -64,6 +65,9 @@ export default function GlobalTelemetryHub() {
     fetchTrendingResorts(false);
   }, []);
 
+  // Determine the primary target for our intelligence feed
+  const primaryTarget = hotResorts.length > 0 ? hotResorts[0].name : "";
+
   return (
     <main className="min-h-screen relative bg-[url('/resort_background_img.png')] bg-cover bg-center bg-fixed text-slate-800 font-mono selection:bg-cyan-500 selection:text-white pb-20">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[3px] pointer-events-none"></div>
@@ -71,10 +75,10 @@ export default function GlobalTelemetryHub() {
 
       <div className="relative z-10 max-w-7xl mx-auto space-y-8 pt-10 px-6 md:px-12 flex flex-col">
 
-{/* --- MAIN HERO GRID: Map (Left) + Target Lists (Right) --- */}
+        {/* --- MAIN HERO GRID: Map (Left) + Target Lists (Right) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-down delay-100">
           
-          {/* Global Map Module - Increased height to match the new right sidebar */}
+          {/* Global Map Module */}
           <div className="lg:col-span-2 w-full h-[60vh] lg:h-[80vh] min-h-[700px] flex flex-col relative group border border-slate-700 rounded-md overflow-hidden shadow-2xl">
             <div className="absolute inset-0 bg-cyan-500/5 blur-xl group-hover:bg-cyan-500/10 transition-colors pointer-events-none -z-10"></div>
             <div className="flex-1 w-full h-full">
@@ -82,15 +86,15 @@ export default function GlobalTelemetryHub() {
             </div>
           </div>
 
-          {/* Right Sidebar: My Resorts & Hot Resorts - Increased overall height */}
+          {/* Right Sidebar: My Resorts & Hot Resorts */}
           <div className="lg:col-span-1 flex flex-col gap-6 h-[60vh] lg:h-[80vh] min-h-[700px]">
             
-            {/* MY RESORTS (Given flex-[1.2] so it takes slightly more of the new vertical space) */}
+            {/* MY RESORTS */}
             <div className="flex-[1.2] overflow-hidden flex flex-col">
               <MyResortsModule userId={userId} />
             </div>
 
-            {/* HOT RESORTS (Keeps its original flex-1 share) */}
+            {/* HOT RESORTS */}
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 border-l-2 border-l-orange-500 p-6 rounded-md shadow-lg flex-1 flex flex-col overflow-hidden relative">
               <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-orange-500/10 to-transparent pointer-events-none"></div>
               
@@ -138,24 +142,14 @@ export default function GlobalTelemetryHub() {
         {/* --- LOWER INTELLIGENCE MODULES --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-down delay-200">
           
-          <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-purple-500 p-6 rounded-md shadow-lg space-y-4 md:col-span-2">
-            <h3 className="text-lg font-bold text-purple-500 uppercase tracking-widest mb-2">MODULE: NETWORK_INTEL</h3>
-            <div className="space-y-3">
-              <div className="bg-slate-950/50 border border-slate-800 p-3 border-l-4 border-l-cyan-500">
-                <p className="text-[10px] text-slate-500 tracking-widest mb-1">SYS_TIME: 08:42 // TARGET: CHAMONIX</p>
-                <p className="text-sm text-slate-300">Weather satellite detects incoming front. <span className="text-cyan-400 font-bold">+15cm fresh snow</span> expected overnight. Conditions optimal for tomorrow.</p>
+          {/* --- DYNAMIC NEWS INTELLIGENCE (Replaces the static block) --- */}
+          <div className="md:col-span-2 flex flex-col relative">
+            {primaryTarget && (
+              <div className="absolute -top-3 left-4 bg-yellow-500 text-slate-950 text-[10px] font-bold px-2 py-1 z-20 tracking-widest">
+                TARGET_LOCK: {primaryTarget.toUpperCase()}
               </div>
-              
-              <div className="bg-slate-950/50 border border-slate-800 p-3 border-l-4 border-l-green-500">
-                <p className="text-[10px] text-slate-500 tracking-widest mb-1">SYS_TIME: 06:15 // TARGET: ST. ANTON AM ARLBERG</p>
-                <p className="text-sm text-slate-300">Avalanche control completed on Valluga. Hazard level reduced to <span className="text-green-400 font-bold">LEVEL 2 (MODERATE)</span>. Off-piste sectors opening.</p>
-              </div>
-
-              <div className="bg-slate-950/50 border border-slate-800 p-3 border-l-4 border-l-red-500">
-                <p className="text-[10px] text-slate-500 tracking-widest mb-1">SYS_TIME: YESTERDAY // TARGET: ZERMATT</p>
-                <p className="text-sm text-slate-300">High winds at peak altitude. Matterhorn Glacier Paradise lifts currently on <span className="text-red-400 font-bold">STANDBY</span>. Monitor for updates.</p>
-              </div>
-            </div>
+            )}
+            <NewsIntelWidget resortName={primaryTarget} />
           </div>
           
           <div className="bg-slate-900/80 backdrop-blur-xl border-l-2 border-red-500 p-6 rounded-md shadow-lg space-y-4 flex flex-col justify-between">
