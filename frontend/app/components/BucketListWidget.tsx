@@ -162,7 +162,7 @@ export default function BucketListWidget({
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
         
-        {/* --- TAB: MISSION TARGETS --- */}
+{/* --- TAB: MISSION TARGETS --- */}
         {activeTab === "MISSION" && (
           activeItems.length === 0 ? (
             <div className="text-center text-[10px] text-slate-500 mt-12 tracking-widest">NO_TARGETS_ASSIGNED_TO_THIS_LEG</div>
@@ -192,36 +192,42 @@ export default function BucketListWidget({
           )
         )}
 
-        {aiTargets.map((item, idx) => {
-          const exists = isInArchive(item.title);
-          const attached = activeItems.some(a => a.name === item.title);
+        {/* --- TAB: AI RECON --- */}
+        {activeTab === "AI_RECON" && (
+          loadingAI ? (
+            <div className="text-center text-[10px] text-purple-500/50 animate-pulse mt-12">DEPLOYING_SCOUTS...</div>
+          ) : (
+            aiTargets.map((item, idx) => {
+              const exists = isInArchive(item.title);
+              const attached = activeItems.some(a => a.name === item.title);
 
-          return (
-            <div key={idx} className="p-3 bg-slate-950/80 border border-slate-700 flex justify-between items-center group">
-              <div>
-                <span className="text-[9px] text-slate-500 block mb-1">
-                    {item.category} {exists && "• [IN_DATABASE]"}
-                </span>
-                <h4 className={`text-xs font-bold ${exists ? 'text-cyan-400' : 'text-purple-300'}`}>
-                    {item.title}
-                </h4>
-                <p className="text-[10px] text-slate-500 max-w-sm">{item.description}</p>
-              </div>
-              <button 
-                onClick={() => handleSaveToMission(item)}
-                disabled={isProcessing || attached}
-                className={`text-[9px] px-3 py-2 font-bold tracking-widest transition-colors shrink-0 border ${
-                  attached 
-                    ? "bg-slate-900 text-slate-600 border-slate-800" 
-                    : "bg-slate-800 text-purple-400 hover:bg-purple-600 hover:text-white border-purple-900"
-                }`}
-              >
-                {attached ? "SECURED" : exists ? "+ RE-ATTACH" : "+ SECURE"}
-              </button>
-            </div>
-          );
-        })}
-
+              return (
+                <div key={idx} className="p-3 bg-slate-950/80 border border-slate-700 flex justify-between items-center group">
+                  <div>
+                    <span className="text-[9px] text-slate-500 block mb-1">
+                        {item.category} {exists && "• [IN_DATABASE]"}
+                    </span>
+                    <h4 className={`text-xs font-bold ${exists ? 'text-cyan-400' : 'text-purple-300'}`}>
+                        {item.title}
+                    </h4>
+                    <p className="text-[10px] text-slate-500 max-w-sm">{item.description}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleSaveToMission(item)}
+                    disabled={isProcessing || attached}
+                    className={`text-[9px] px-3 py-2 font-bold tracking-widest transition-colors shrink-0 border ${
+                      attached 
+                        ? "bg-slate-900 text-slate-600 border-slate-800" 
+                        : "bg-slate-800 text-purple-400 hover:bg-purple-600 hover:text-white border-purple-900"
+                    }`}
+                  >
+                    {attached ? "SECURED" : exists ? "+ RE-ATTACH" : "+ SECURE"}
+                  </button>
+                </div>
+              );
+            })
+          )
+        )}
         {/* --- TAB: ARCHIVE --- */}
         {activeTab === "ARCHIVE" && (
           <div className="space-y-4">

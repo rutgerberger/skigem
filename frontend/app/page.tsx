@@ -96,7 +96,7 @@ export default function Home() {
 
       <div className="relative z-10 max-w-6xl mx-auto space-y-12 pt-24 pb-24 px-6 md:px-12">
         
-{/* --- SYSTEM HEADER --- */}
+        {/* --- SYSTEM HEADER --- */}
         <div className="relative bg-slate-950/80 backdrop-blur-xl border border-slate-800 p-6 md:p-10 rounded-sm shadow-2xl overflow-hidden mb-4 group animate-fade-in-down">
           {/* Decorative background effects */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/5 blur-[100px] pointer-events-none group-hover:bg-cyan-500/10 transition-colors duration-700"></div>
@@ -113,13 +113,22 @@ export default function Home() {
                 </span>
               </div>
               
-              <h1 className="text-5xl md:text-7xl font-black text-white tracking-widest drop-shadow-lg">
-                SCHI<span className="text-cyan-500">HUB</span>
-                <span className="text-cyan-500 animate-pulse opacity-70 font-light">_</span>
-              </h1>
+              {/* --- NEW: FLEX CONTAINER FOR LOGO AND TITLE --- */}
+              <div className="flex items-center gap-4 md:gap-6">
+                <img 
+                  src="/logo.png" 
+                  alt="SchiHub Diamond Logo" 
+                  className="w-14 h-14 md:w-20 md:h-20 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.4)]" 
+                />
+                {/* Inject the michroma.className right here at the start of the string */}
+                <h1 className={`font-mono font-bold text-2xl md:text-7xl text-white tracking-widest drop-shadow-lg`}>
+                  SCHIHUB<span className="text-cyan-400"></span>
+                  <span className="text-cyan-500 animate-pulse opacity-100 font-light">.</span>
+                </h1>
+              </div>
               
               <p className="text-xs md:text-sm text-slate-400 tracking-[0.2em] max-w-xl uppercase leading-relaxed">
-                Tactical Expedition Planning & Telemetry Interface. <br className="hidden md:block" />
+                Not your generic AI trip generator. Built for Ski Geeks <br className="hidden md:block" />
                 <span className="text-slate-300">Status: <span className="text-green-400 font-bold">Awaiting Directives.</span></span>
               </p>
             </div>
@@ -147,7 +156,7 @@ export default function Home() {
           </div>
         </div>
 
-{/* --- DYNAMIC TRIP BANNER --- */}
+        {/* --- DYNAMIC TRIP BANNER --- */}
         {activeTrip || nextTrip ? (
           <div className={`p-6 md:p-8 rounded-md border-l-4 shadow-2xl relative overflow-hidden group transition-all animate-fade-in-down ${
             activeTrip ? 'bg-emerald-950/40 border-emerald-500' : 'bg-blue-950/40 border-blue-500'
@@ -232,9 +241,6 @@ export default function Home() {
             </div>
           </div>
         )}
-        
-        {/* Modularized Unified Data Search */}
-        <DataSearchModule />
 
         {/* Data Modules Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

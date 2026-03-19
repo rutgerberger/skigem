@@ -46,9 +46,9 @@ class ResortResponse(ResortBase):
 # --- INPUT MODELS ---
 class SearchCriteria(BaseModel):
     country: str
-    max_budget_per_night: float
+    max_budget_per_night: Optional[float] = None
     lift_proximity_m: int = Field(default=500)
-    number_of_guests: int
+    number_of_guests: Optional[int] = None
     additional_requirements: Optional[str] = None
     # --- RADAR CHART PREFERENCES (1-5 Scale) ---
     pref_pisteKms: int = Field(default=3, description="Importance of extensive piste kilometers")

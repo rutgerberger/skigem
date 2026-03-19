@@ -1,3 +1,4 @@
+// --- components/ResortsBriefing.tsx ---
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
@@ -16,13 +17,10 @@ export default function ResortsBriefing() {
   const [activeResort, setActiveResort] = useState<Resort | null>(null);
 
   const [dbResorts, setDbResorts] = useState<any[]>([]);
-
-  // --- NEW: MODAL & TRIP STATE ---
-  const [userTrips, setUserTrips] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedResortForMission, setSelectedResortForMission] = useState<Resort | null>(null);
-  const [newTripName, setNewTripName] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // The active mission we are configuring
+  const currentTripId = searchParams.get("trip_id");
 
   useEffect(() => {
     fetch("http://localhost:8000/api/resorts")
@@ -88,63 +86,36 @@ export default function ResortsBriefing() {
     scoutResorts();
   }, [searchParams, lastResortCriteria, setResorts, setLastResortCriteria, activeResort, resorts]);
 
-  const selectResort = (resortName: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("target_resort", resortName);
-    params.set("phase", "chalets");
-    router.push(`/trip-planner?${params.toString()}`);
-  };
-
   const openTelemetryHub = (resortName: string) => {
     router.push(`/resort-center/${encodeURIComponent(resortName)}`);
   };
 
-  // --- NEW: TRIP PLANNER ACTIONS ---
-  const openMissionModal = async (resort: Resort) => {
-    setSelectedResortForMission(resort);
-    setIsModalOpen(true);
-    try {
-      const res = await fetch(`http://127.0.0.1:8000/api/trips?user_id=${userId}`);
-      if (res.ok) setUserTrips(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const closeMissionModal = () => {
-    setIsModalOpen(false);
-    setSelectedResortForMission(null);
-    setNewTripName("");
-  };
-
-  const addToTrip = async (tripId: number | null, isNew: boolean = false) => {
-    if (!selectedResortForMission || !userId) return;
+  const lockTargetToMission = async (resortName: string) => {
+    if (isProcessing) return;
     setIsProcessing(true);
 
     try {
-      const matchedResort = dbResorts.find(r => r.name === selectedResortForMission.name);
-      if (!matchedResort) throw new Error("Resort not found in DB");
-
-      let finalTripId = tripId;
-      if (isNew && newTripName) {
-        const tripRes = await fetch("http://127.0.0.1:8000/api/trips", {
+      const matchedResort = dbResorts.find(r => r.name === resortName);
+      
+      if (currentTripId && matchedResort) {
+        await fetch(`http://127.0.0.1:8000/api/trips/${currentTripId}/legs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newTripName, user_id: userId }),
+          body: JSON.stringify({ resort_id: matchedResort.id, order_index: 0 }),
         });
-        const tripData = await tripRes.json();
-        finalTripId = tripData.id;
       }
 
-      // Add the Leg (Notice chalet_id is absent/null)
-      const legRes = await fetch(`http://127.0.0.1:8000/api/trips/${finalTripId}/legs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resort_id: matchedResort.id, order_index: 0 }),
-      });
-
-      if (legRes.ok) closeMissionModal();
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("target_resort", resortName);
+      params.set("phase", "accommodation");
+      router.push(`/trip-planner?${params.toString()}`);
 
     } catch (err) {
-      console.error("Mission Add Error:", err);
+      console.error("Target Lock Error:", err);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("target_resort", resortName);
+      params.set("phase", "accommodation");
+      router.push(`/trip-planner?${params.toString()}`);
     } finally {
       setIsProcessing(false);
     }
@@ -152,13 +123,12 @@ export default function ResortsBriefing() {
 
   const resortsWithCoords = useMemo(() => {
       return resorts.map(r => {
-        // Find the exact match in our DB to extract the true GPS coords
         const matchedDb = dbResorts.find(dbR => dbR.name === r.name);
         return { 
           ...r, 
           lat: matchedDb?.latitude || 47.2, 
           lon: matchedDb?.longitude || 11.4,
-          db_id: matchedDb?.id // We pass this along just in case it's needed for the modal
+          db_id: matchedDb?.id
         };
       });
     }, [resorts, dbResorts]);
@@ -166,7 +136,8 @@ export default function ResortsBriefing() {
   const activeResortWithCoords = resortsWithCoords.find(r => r.name === activeResort?.name);
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 font-mono gap-4">
+    // FIX: Changed min-h-screen to h-full to fit the orchestrator perfectly
+    <div className="h-full w-full flex flex-col items-center justify-center bg-slate-950 font-mono gap-4">
       <div className="text-5xl animate-pulse drop-shadow-sm">⛷️</div>
       <div className="text-cyan-500 text-xl font-bold text-center px-4 tracking-widest">
         SCOUTING_MOUNTAINS...<br/>
@@ -176,8 +147,9 @@ export default function ResortsBriefing() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col font-mono selection:bg-cyan-500 selection:text-white">
-      <header className="px-10 py-5 border-b border-slate-800 bg-slate-950 z-20 shadow-md flex items-center justify-between">
+    // FIX: Changed min-h-screen to h-full to prevent double scrollbars
+    <div className="h-full w-full bg-slate-950 flex flex-col font-mono selection:bg-cyan-500 selection:text-white">
+      <header className="px-10 py-5 border-b border-slate-800 bg-slate-950 z-20 shadow-md flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-black text-white tracking-widest flex items-center gap-3">
             <span className="text-cyan-500">_</span> PHASE_A: RESORT_BRIEFING
@@ -210,12 +182,6 @@ export default function ResortsBriefing() {
                 </h2>
                 <div className="flex gap-2">
                   <button 
-                    onClick={(e) => { e.stopPropagation(); openMissionModal(resort); }}
-                    className="text-[10px] shrink-0 text-purple-400 border border-purple-500/50 px-2 py-1 rounded hover:bg-purple-500 hover:text-white transition-colors font-bold tracking-widest"
-                  >
-                    + ADD
-                  </button>
-                  <button 
                     onClick={(e) => { e.stopPropagation(); openTelemetryHub(resort.name); }}
                     className="text-[10px] shrink-0 text-cyan-500 border border-cyan-500/50 px-2 py-1 rounded hover:bg-cyan-500 hover:text-slate-950 transition-colors font-bold tracking-widest"
                   >
@@ -236,14 +202,15 @@ export default function ResortsBriefing() {
               </div>
 
               <button 
-                onClick={(e) => { e.stopPropagation(); selectResort(resort.name); }}
-                className={`w-full py-3 rounded uppercase tracking-widest text-sm font-bold transition-all duration-300 flex justify-center items-center gap-2 mt-auto ${
-                  activeResort?.name === resort.name
-                    ? "bg-cyan-600 text-slate-950 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
-                    : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-                }`}
-              >
-                DEPLOY_HUNTERS
+                  onClick={(e) => { e.stopPropagation(); lockTargetToMission(resort.name); }}
+                  disabled={isProcessing}
+                  className={`w-full py-3 rounded uppercase tracking-widest text-sm font-bold transition-all duration-300 flex justify-center items-center gap-2 mt-auto ${
+                    activeResort?.name === resort.name
+                      ? "bg-cyan-600 text-slate-950 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                      : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  }`}
+                >
+                  {isProcessing && activeResort?.name === resort.name ? "LOCKING..." : "SELECT_TARGET // PROCEED"}
               </button>
             </div>
           ))}
@@ -296,10 +263,11 @@ export default function ResortsBriefing() {
 
                 <div className="flex gap-4">
                   <button 
-                    onClick={() => openMissionModal(activeResort)}
-                    className="flex-1 mt-4 py-3 bg-slate-950 border border-purple-500/50 hover:bg-purple-600 text-purple-400 hover:text-white font-bold tracking-widest text-sm uppercase transition-all duration-300 shadow-[0_0_15px_rgba(147,51,234,0.3)]"
+                    onClick={() => lockTargetToMission(activeResort.name)}
+                    disabled={isProcessing}
+                    className="flex-1 mt-4 py-3 bg-slate-950 border border-purple-500/50 hover:bg-purple-600 text-purple-400 hover:text-white font-bold tracking-widest text-sm uppercase transition-all duration-300 shadow-[0_0_15px_rgba(147,51,234,0.3)] disabled:opacity-50"
                   >
-                    + ADD TO MISSION
+                    {isProcessing ? "LOCKING..." : "+ SELECT & PROCEED"}
                   </button>
                   <button 
                     onClick={() => openTelemetryHub(activeResort.name)}
@@ -317,55 +285,6 @@ export default function ResortsBriefing() {
           )}
         </div>
       </div>
-
-      {/* --- MODAL OVERLAY --- */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border-2 border-purple-500 p-8 rounded-lg shadow-[0_0_30px_rgba(147,51,234,0.3)] max-w-md w-full relative">
-            <button onClick={closeMissionModal} className="absolute top-4 right-4 text-slate-500 hover:text-white font-bold">X</button>
-            <h2 className="text-xl font-bold text-purple-400 uppercase tracking-widest mb-2 border-b border-purple-500/30 pb-2">ADD TO MISSION</h2>
-            <p className="text-sm text-slate-300 mb-6">Select an active trip or create a new deployment parameters file for target: <br/><span className="text-cyan-400 font-bold">{selectedResortForMission?.name}</span></p>
-            
-            <div className="space-y-4">
-              {userTrips.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">ACTIVE_TRIPS:</p>
-                  {userTrips.map(trip => (
-                    <button 
-                      key={trip.id}
-                      onClick={() => addToTrip(trip.id, false)}
-                      disabled={isProcessing}
-                      className="w-full text-left bg-slate-950 border border-slate-700 p-3 hover:border-purple-500 hover:text-purple-400 transition-colors uppercase tracking-widest text-sm text-slate-300"
-                    >
-                      &gt; {trip.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="pt-4 border-t border-slate-800">
-                <p className="text-xs text-slate-500 uppercase tracking-widest font-bold mb-2">CREATE_NEW_TRIP:</p>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={newTripName}
-                    onChange={e => setNewTripName(e.target.value)}
-                    placeholder="ENTER_TRIP_CODENAME..."
-                    className="flex-1 bg-slate-950 border border-slate-700 p-2 text-sm text-white focus:outline-none focus:border-purple-500"
-                  />
-                  <button 
-                    onClick={() => addToTrip(null, true)}
-                    disabled={!newTripName || isProcessing}
-                    className="bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold px-4 py-2 uppercase tracking-widest text-xs transition-colors"
-                  >
-                    {isProcessing ? "..." : "CREATE"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
