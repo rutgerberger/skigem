@@ -58,3 +58,20 @@ The backend is powered by **CrewAI / LangGraph**, orchestrating three distinct a
    ```bash
    git clone [https://github.com/yourusername/snowgem-orchestra.git](https://github.com/yourusername/snowgem-orchestra.git)
    cd snowgem-orchestra
+
+2. **Initialize the Backend Core**
+   ```bash
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # Or `venv\Scripts\activate` on Windows
+   pip install -r requirements.txt
+   cp .env.example .env      # Add your API keys here
+   uvicorn app.main:app --reload
+
+3. **Initialize the Frontend UI**
+   ```bash
+   cd ../frontend
+   npm install
+   npm run dev
+
+The system will now be active on http://localhost:3000.
