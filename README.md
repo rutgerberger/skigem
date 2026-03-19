@@ -56,7 +56,7 @@ The backend is powered by **CrewAI / LangGraph**, orchestrating three distinct a
 
 1. **Clone the repository & enter the uplink**
    ```bash
-   git clone [https://github.com/yourusername/snowgem-orchestra.git](https://github.com/yourusername/snowgem-orchestra.git)
+   git clone [https://github.com/rutgerberger/snowgem-orchestra.git](https://github.com/rutgerberger/snowgem-orchestra.git)
    cd snowgem-orchestra
 
 2. **Initialize the Backend Core**
