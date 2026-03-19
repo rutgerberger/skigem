@@ -64,8 +64,6 @@ npm run dev
 
 ### 📂 The File Tree
 
-Here is the structure to keep your frontend and your AI orchestra cleanly separated:
-
 ```text
 snowgem-orchestra/
 ├── frontend/                     # TypeScript Next.js App
