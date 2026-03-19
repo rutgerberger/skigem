@@ -4,6 +4,8 @@
 
 Built with a heavily stylized, terminal-inspired Next.js frontend and a Python multi-agent backend, this system uses an "orchestra" of specialized AI agents to plan, scrape, and evaluate the perfect ski holiday based on highly specific user telemetry. It tracks upcoming deployments, active missions, and archives past runs.
 
+![SchiHub Dashboard](cover.png)
+
 ---
 
 ## ✨ System Features
